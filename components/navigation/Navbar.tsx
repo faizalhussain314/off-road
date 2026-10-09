@@ -25,6 +25,7 @@ export function Navbar() {
     { label: "THE TRAIL", href: "#trail" },
     { label: "OBSTACLES", href: "#obstacles" },
     { label: "EXPERIENCE", href: "#experience" },
+    { label: "SPONSORS", href: "#sponsors" },
     { label: "REGISTRATION", href: "#registration" },
     { label: "CONTACT", href: "#contact" },
   ];
@@ -61,7 +62,7 @@ export function Navbar() {
           </a>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden md:flex items-center space-x-8 text-xs font-mono tracking-widest text-neutral-700 font-medium">
+          <nav className="hidden lg:flex items-center space-x-7 text-xs font-mono tracking-widest text-neutral-700 font-medium">
             {navLinks.map((link) => (
               <a
                 key={link.label}
@@ -74,12 +75,18 @@ export function Navbar() {
           </nav>
 
           {/* Action CTA */}
-          <div className="hidden md:flex items-center space-x-4">
+          <div className="hidden sm:flex items-center space-x-3">
+            <a
+              href="#sponsors"
+              className="inline-flex items-center px-4 py-2 border border-neutral-300 hover:border-amber-600 text-neutral-800 font-syne font-bold text-xs tracking-wider uppercase transition-colors"
+            >
+              <span>SPONSOR</span>
+            </a>
             <a
               href="#registration"
-              className="inline-flex items-center space-x-2 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-syne font-bold text-xs tracking-wider uppercase transition-all duration-200 shadow-sm hover:scale-[1.02]"
+              className="inline-flex items-center space-x-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-syne font-bold text-xs tracking-wider uppercase transition-all duration-200 shadow-sm hover:scale-[1.02]"
             >
-              <span>REGISTER YOUR 4X4</span>
+              <span>REGISTER 4X4</span>
               <ArrowUpRight className="w-3.5 h-3.5" />
             </a>
           </div>

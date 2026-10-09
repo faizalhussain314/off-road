@@ -27,14 +27,14 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://madprotek.com"),
   title: "MADPROTEK Adventure Trail 2026 | 4x4 Off-Road Experience",
   description:
-    "MADPROTEK Adventure Trail 2026 — a two-day technical 4x4 off-road experience at Urigam Village near the Hosur–Bengaluru corridor, featuring nine technical obstacle zones and limited vehicle entries.",
+    "MADPROTEK Adventure Trail 2026 — a two-day technical 4x4 off-road experience at Urigam Village near the Hosur–Bengaluru corridor, featuring 15+ natural and technical obstacles and 50+ registrations.",
   keywords: [
     "MADPROTEK",
     "4x4 off-road",
     "Adventure Trail 2026",
     "Urigam Village",
     "South India off-road",
-    "technical obstacle zones",
+    "15+ natural and technical obstacles",
     "rock crawl",
     "Bengaluru 4x4",
   ],
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "MADPROTEK Adventure Trail 2026 | 4x4 Off-Road Experience",
     description:
-      "A two-day technical 4x4 off-road experience at Urigam Village near the Hosur–Bengaluru corridor. 9 obstacle zones. Strictly limited 25–30 rigs.",
+      "A two-day technical 4x4 off-road experience at Urigam Village near the Hosur–Bengaluru corridor. 15+ natural and technical obstacles. 50+ registrations.",
     url: "https://madprotek.com",
     siteName: "MADPROTEK Adventure Trail",
     images: [

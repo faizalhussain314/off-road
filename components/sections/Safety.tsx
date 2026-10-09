@@ -5,9 +5,9 @@ export function Safety() {
   const safetyProtocols = [
     {
       icon: Crosshair,
-      title: "ZONE-ASSIGNED TECHNICAL MARSHALS",
+      title: "DEDICATED TECHNICAL MARSHALS",
       detail:
-        "Every obstacle zone features dedicated chief marshals and spotters with line-of-sight communication, radio telemetry, and immediate vehicle halt authority.",
+        "Every technical obstacle features dedicated chief marshals and spotters with line-of-sight communication, radio telemetry, and immediate vehicle halt authority.",
     },
     {
       icon: Wrench,
@@ -83,7 +83,7 @@ export function Safety() {
               </p>
 
               <div className="pt-4 border-t border-white/20 flex items-center justify-between text-[11px] font-mono text-neutral-300">
-                <span>VHF: 154.250 MHz</span>
+                <span>MARSHAL RADIO: ACTIVE</span>
                 <span>•</span>
                 <span>MAX WINCH: 12,500 LBS</span>
                 <span>•</span>
@@ -128,7 +128,7 @@ export function Safety() {
           <div className="flex items-center space-x-4">
             <div className="w-3 h-3 rounded-full bg-emerald-600 animate-pulse hidden sm:block" />
             <div className="text-xs font-mono tracking-wider text-neutral-800 uppercase font-semibold">
-              COMMUNICATIONS FREQUENCY: <span className="text-amber-700 font-bold">VHF 154.250 MHz</span> // CONTINUOUS BASE LINK
+              MARSHAL DISPATCH NETWORK: <span className="text-amber-700 font-bold">CONTINUOUS RADIO LINK</span> // ZERO LATENCY
             </div>
           </div>
 

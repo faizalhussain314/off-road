@@ -7,7 +7,7 @@ export function TrailPreview() {
       id: "01",
       name: "ROCK CRAWL",
       rating: "CLASS 5",
-      type: "Granite Boulder Field",
+      type: "Natural Granite Boulder Field",
       spec: "Min 33\" M/T Tires + Front/Rear Differential Lockers",
       description: "Jagged granite monoliths requiring crawling in 4L Low-1st gear with zero wheelspin to protect underbody skid armor.",
     },
@@ -15,7 +15,7 @@ export function TrailPreview() {
       id: "02",
       name: "ARTICULATION RIDGE",
       rating: "CLASS 4",
-      type: "Offset Mogul Trenches",
+      type: "Technical Offset Mogul Trenches",
       spec: "Long-Travel Suspension + Extended Sway Bars",
       description: "Severe diagonal wheel drops that force opposite wheels into full compression and full droop simultaneously.",
     },
@@ -39,7 +39,7 @@ export function TrailPreview() {
       id: "05",
       name: "STONE GULLY",
       rating: "CLASS 4",
-      type: "Submerged Riverbed Trench",
+      type: "Natural Riverbed Boulder Trench",
       spec: "Heavy-Duty Diff Covers + High-Clearance Skid Plates",
       description: "Narrow dry ravine choked with loose river boulders that kick upward into transfer cases and driveshafts.",
     },
@@ -47,7 +47,7 @@ export function TrailPreview() {
       id: "06",
       name: "HAIRPIN TRENCH",
       rating: "CLASS 4+",
-      type: "High-Bank Off-Camber Switchback",
+      type: "Technical Clay Switchback Trench",
       spec: "Dual-Battery Winch Ready + 4-Point Harness",
       description: "Steep 180° uphill switchback with deep clay trenches requiring dual-wheel throttle bump or winch assist.",
     },
@@ -55,7 +55,7 @@ export function TrailPreview() {
       id: "07",
       name: "35° STEEP INCLINE CLIMB",
       rating: "CLASS 5+",
-      type: "Loose Shale & Red Soil Ascent",
+      type: "Natural Loose Shale & Red Soil Ascent",
       spec: "Aggressive Beadlock Wheels + High-Torque Drivetrain",
       description: "Near-vertical assault where drivers see only sky through the windshield. Traction management is the only margin between summit and rollover.",
     },
@@ -63,12 +63,60 @@ export function TrailPreview() {
       id: "08",
       name: "VERTICAL DESCENT STEP",
       rating: "CLASS 4",
-      type: "Terraced Drop-Off Shelf",
+      type: "Terraced Granite Drop-Off Shelf",
       spec: "Low-Range Engine Braking + Rear Recovery Points",
       description: "Nerve-testing multi-tiered rock drop where foot brake lockup causes uncontrolled slide; purely driven on compression braking.",
     },
     {
       id: "09",
+      name: "RIVERBED BOULDER RUN",
+      rating: "CLASS 4+",
+      type: "Natural Wet Granite & Pebble Mire",
+      spec: "Sealed Breathers + High-Clearance Axle Tubes",
+      description: "Low-traction riverbed crossing with unpredictable submerged boulders and wet granite step-ups.",
+    },
+    {
+      id: "10",
+      name: "LOOSE SHALE CREST",
+      rating: "CLASS 5",
+      type: "Natural Scree & Fractured Rock Ascent",
+      spec: "Pneumatic Tyre Deflation down to 12 PSI",
+      description: "Shifting scree slope requiring persistent forward momentum without high wheelspin that digs deep ruts.",
+    },
+    {
+      id: "11",
+      name: "OFFSET LOG & ROCK LEDGE",
+      rating: "CLASS 4",
+      type: "Technical Stepped Step-Up Ladder",
+      spec: "Heavy Duty Rock Sliders + Underbody Plating",
+      description: "Staggered natural rock shelves paired with timber logs demanding calculated tire placement and spotter synchronization.",
+    },
+    {
+      id: "12",
+      name: "CAMEL HUMP DUAL CREST",
+      rating: "CLASS 4+",
+      type: "High-Centered Breakover Apex",
+      spec: "Extended Wheelbase Clearance + Skid Protection",
+      description: "Back-to-back crests testing breakover angles where low-slung rigs risk stranding without momentum.",
+    },
+    {
+      id: "13",
+      name: "RED CLAY SINKHOLE",
+      rating: "CLASS 5",
+      type: "Natural Deep Clay Mud Chokepoint",
+      spec: "Mud-Terrain Deep Lugs + Front Winch Anchor",
+      description: "Unctuous South Indian red mud mire that clings to tire treads and demands aggressive wheel spin cleaning.",
+    },
+    {
+      id: "14",
+      name: "OFF-CAMBER S-BEND",
+      rating: "CLASS 4+",
+      type: "Technical Counter-Slope Traverse",
+      spec: "Anti-Roll Bar Disconnect + Spotter Command",
+      description: "Double off-camber transition requiring drivers to shift vehicle weight and trust side-slope balance.",
+    },
+    {
+      id: "15",
       name: "THE FINAL GAUNTLET",
       rating: "CLASS EXTREME",
       type: "Multi-Surface Apex Proving Obstacle",
@@ -85,17 +133,17 @@ export function TrailPreview() {
           <div>
             <div className="flex items-center space-x-2 text-amber-700 font-mono text-xs tracking-tactical uppercase mb-3 font-bold">
               <Mountain className="w-4 h-4 text-amber-600" />
-              <span>THE TRAIL // 9 PROVING ZONES</span>
+              <span>THE TRAIL // 15+ PROVING OBSTACLES</span>
             </div>
             <h2 className="font-outfit text-3xl sm:text-5xl lg:text-6xl font-black text-neutral-950 uppercase tracking-tight leading-[1.05]">
-              9 TECHNICAL<br />
-              <span className="text-amber-600">OBSTACLE ZONES</span>
+              15+ NATURAL &<br />
+              <span className="text-amber-600">TECHNICAL OBSTACLES</span>
             </h2>
           </div>
 
           <div className="flex items-center space-x-3 text-xs font-mono text-neutral-700 bg-white px-4 py-3 border border-neutral-200 rounded-sm shadow-sm font-semibold">
             <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-            <span>ALL ZONES SUPERVISED BY ACCREDITED CHIEF MARSHALS</span>
+            <span>ALL OBSTACLES SUPERVISED BY ACCREDITED CHIEF MARSHALS</span>
           </div>
         </div>
 
@@ -112,7 +160,7 @@ export function TrailPreview() {
             <div className="absolute top-4 left-4 z-10">
               <div className="inline-flex items-center space-x-2 px-3 py-1 bg-black/70 backdrop-blur-md border border-white/20 text-white text-[11px] font-mono tracking-widest uppercase rounded-sm">
                 <Zap className="w-3 h-3 text-amber-500" />
-                <span>ZONE SPOTLIGHT // MAXIMUM ARTICULATION</span>
+                <span>OBSTACLE SPOTLIGHT // MAXIMUM ARTICULATION</span>
               </div>
             </div>
 
@@ -145,7 +193,7 @@ export function TrailPreview() {
               <div className="space-y-3 font-sans text-xs text-neutral-700 font-medium">
                 <div className="flex items-start space-x-2.5">
                   <CheckCircle2 className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                  <span>Dual Differential Lockers strongly recommended for Zones 01, 04, 07</span>
+                  <span>Dual Differential Lockers strongly recommended for severe granite crawls & incline climbs</span>
                 </div>
                 <div className="flex items-start space-x-2.5">
                   <CheckCircle2 className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
@@ -159,8 +207,8 @@ export function TrailPreview() {
             </div>
 
             <div className="mt-8 pt-6 border-t border-neutral-100 flex items-center justify-between">
-              <div className="text-xs font-mono text-neutral-500 uppercase">
-                TOTAL TRAIL DISTANCE: <span className="font-bold text-neutral-900">4.2 KM</span>
+              <div className="text-xs font-mono text-neutral-600 uppercase font-semibold">
+                TERRAIN ARCHITECTURE: <span className="font-bold text-neutral-950">NATURAL BEDROCK & RED CLAY</span>
               </div>
               <a
                 href="#registration"
@@ -172,7 +220,7 @@ export function TrailPreview() {
           </div>
         </div>
 
-        {/* 9 Obstacle Cards Grid */}
+        {/* 15+ Obstacle Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {obstacles.map((obs) => (
             <div
@@ -182,7 +230,7 @@ export function TrailPreview() {
               <div>
                 <div className="flex items-center justify-between border-b border-neutral-100 pb-4 mb-4">
                   <span className="font-outfit font-black text-xl text-amber-700">
-                    ZONE {obs.id}
+                    OBSTACLE {obs.id}
                   </span>
                   <span className="px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 font-mono text-[10px] tracking-wider uppercase font-bold rounded-sm">
                     {obs.rating}

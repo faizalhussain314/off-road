@@ -5,15 +5,15 @@ export function EventOverview() {
   const highlights = [
     {
       icon: Gauge,
-      value: "9 ZONES",
-      label: "TECHNICAL OBSTACLES",
-      desc: "Granite boulder crawl, 35° incline, articulation ridge, and final gauntlet.",
+      value: "15+",
+      label: "NATURAL & TECHNICAL OBSTACLES",
+      desc: "Granite boulder crawl, 35° incline, articulation ridges, riverbed boulder runs, and final gauntlet.",
     },
     {
       icon: ShieldCheck,
-      value: "25–30",
-      label: "REGISTERED RIGS ONLY",
-      desc: "Strictly limited to maintain safety, marshal ratio, and trail integrity.",
+      value: "50+",
+      label: "REGISTERED RIGS",
+      desc: "Regulated vehicle registrations to maintain safety, marshal ratio, and trail integrity.",
     },
     {
       icon: Compass,
@@ -76,7 +76,7 @@ export function EventOverview() {
             {/* Bottom HUD Telemetry Strip */}
             <div className="relative z-10 p-6 sm:p-8 text-white">
               <div className="text-amber-400 font-mono text-[11px] tracking-tactical uppercase font-bold mb-1">
-                ZONE 01 // ARRIVAL GAUNTLET
+                OBSTACLE 01 // ARRIVAL GAUNTLET
               </div>
               <h3 className="font-outfit text-xl sm:text-2xl font-black uppercase tracking-tight text-white mb-2">
                 UNCOMPROMISED GROUND CLEARANCE

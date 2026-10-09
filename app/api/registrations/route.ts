@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRegistrations, createRegistration, initDb } from "@/lib/db";
+import { getRegistrations, createRegistration, updateRegistration, deleteRegistration, initDb } from "@/lib/db";
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,28 +25,56 @@ export async function POST(request: NextRequest) {
     await initDb();
     const body = await request.json();
 
-    if (!body.driver_name || !body.phone || !body.vehicle_model) {
+    if (!body.driver_name || !body.phone) {
       return NextResponse.json(
-        { success: false, error: "Driver Name, Phone, and Vehicle Model are required." },
+        { success: false, error: "Driver Name and Phone Number are required." },
         { status: 400 }
       );
     }
 
     const newRecord = await createRegistration({
+      registration_code: body.registration_code,
       driver_name: body.driver_name,
       phone: body.phone,
       whatsapp: body.whatsapp || body.phone,
       email: body.email || "",
-      vehicle_model: body.vehicle_model,
-      rig_class: body.rig_class || "Extreme Class (35\"+ Lockers)",
+      driver_age: body.driver_age,
+      driver_gender: body.driver_gender,
+      driver_city: body.driver_city,
+      driver_id_proof: body.driver_id_proof,
+
+      experience_type: body.experience_type || "DAY 1: OWN 4X4 EXPERIENCE",
+      experience_date: body.experience_date || "14 NOV 2026",
+      pricing_tier: body.pricing_tier || "Regular",
+      total_amount: Number(body.total_amount) || 6999,
+      additional_participants_count: Number(body.additional_participants_count) || 0,
+
+      passengers: body.passengers || [],
+
+      vehicle_owner: body.vehicle_owner || body.driver_name,
+      vehicle_reg_number: body.vehicle_reg_number || "",
+      vehicle_make: body.vehicle_make || "",
+      vehicle_model: body.vehicle_model || "Mahindra Thar",
+      manufacturing_year: body.manufacturing_year || "",
+      vehicle_colour: body.vehicle_colour || "",
+      fuel_type: body.fuel_type || "Diesel",
+      transmission: body.transmission || "Manual",
+      drivetrain: body.drivetrain || "4x4",
+      is_modified: Boolean(body.is_modified),
+      rig_class: body.rig_class || (body.is_modified ? "Pro-Modified (33\"–35\")" : "Standard Proving Spec"),
       modifications: body.modifications || "",
-      experience_years: body.experience_years || "3-5 Years",
-      spotter_name: body.spotter_name || "",
-      spotter_phone: body.spotter_phone || "",
+      modification_details: body.modification_details || {},
+
+      documents: body.documents || {},
+      safety_experience: body.safety_experience || {},
+      experience_years: body.experience_years || "",
+      spotter_name: body.spotter_name || (body.passengers?.[0]?.name || ""),
+      spotter_phone: body.spotter_phone || (body.passengers?.[0]?.mobile || ""),
+
       status: body.status || "PENDING_CALL",
       call_notes: body.call_notes || "",
       slot_number: body.slot_number ? Number(body.slot_number) : null,
-      source: body.source || "PHONE_MANUAL",
+      source: body.source || "ONLINE_WEB",
     });
 
     return NextResponse.json({ success: true, data: newRecord }, { status: 201 });
@@ -56,5 +84,45 @@ export async function POST(request: NextRequest) {
       { success: false, error: error.message || "Failed to create registration" },
       { status: 500 }
     );
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    await initDb();
+    const body = await request.json();
+    const { id, ...updates } = body;
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: "ID is required" }, { status: 400 });
+    }
+
+    const updated = await updateRegistration(Number(id), updates);
+    if (!updated) {
+      return NextResponse.json({ success: false, error: "Registration not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, data: updated });
+  } catch (error: any) {
+    console.error("PATCH /api/registrations error:", error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    await initDb();
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: "ID is required" }, { status: 400 });
+    }
+
+    const ok = await deleteRegistration(Number(id));
+    return NextResponse.json({ success: ok });
+  } catch (error: any) {
+    console.error("DELETE /api/registrations error:", error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

@@ -45,21 +45,45 @@ export function Contact() {
           {/* Communications */}
           <div className="space-y-3">
             <div className="flex items-center space-x-2 text-xs font-mono tracking-widest text-amber-700 uppercase font-bold">
-              <Radio className="w-3.5 h-3.5" />
-              <span>MARSHAL DISPATCH</span>
+              <Phone className="w-3.5 h-3.5" />
+              <span>MARSHAL & INQUIRY DISPATCH</span>
             </div>
             <div className="space-y-2 text-xs font-mono text-neutral-700 font-medium">
-              <div className="flex items-center space-x-2">
-                <Mail className="w-3.5 h-3.5 text-amber-600" />
-                <span>trail@madprotek.com</span>
+              <div className="flex flex-col space-y-1">
+                <a
+                  href="mailto:madprotekcorp@gmail.com"
+                  className="flex items-center space-x-2 hover:text-amber-700 transition-colors"
+                >
+                  <Mail className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                  <span>madprotekcorp@gmail.com</span>
+                </a>
+                <a
+                  href="mailto:info@madprotekcorp.com"
+                  className="flex items-center space-x-2 hover:text-amber-700 transition-colors pl-5"
+                >
+                  <span>info@madprotekcorp.com</span>
+                </a>
               </div>
-              <div className="flex items-center space-x-2">
-                <Phone className="w-3.5 h-3.5 text-amber-600" />
-                <span>+91 94432 004X4</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Radio className="w-3.5 h-3.5 text-amber-600" />
-                <span>VHF 154.250 MHz (Base)</span>
+              <div className="flex flex-col space-y-1 pt-1">
+                <a
+                  href="tel:+918489199319"
+                  className="flex items-center space-x-2 hover:text-amber-700 transition-colors"
+                >
+                  <Phone className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                  <span>+91 84891 99319</span>
+                </a>
+                <a
+                  href="tel:+916374693118"
+                  className="flex items-center space-x-2 hover:text-amber-700 transition-colors pl-5"
+                >
+                  <span>+91 63746 93118</span>
+                </a>
+                <a
+                  href="tel:+918148321138"
+                  className="flex items-center space-x-2 hover:text-amber-700 transition-colors pl-5"
+                >
+                  <span>+91 81483 21138</span>
+                </a>
               </div>
             </div>
           </div>

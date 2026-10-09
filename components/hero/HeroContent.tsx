@@ -33,11 +33,11 @@ export const HeroContent = forwardRef<HeroContentHandle>((_, ref) => {
     },
     {
       badge: "STAGE 03 // THE CHALLENGE",
-      heading: "9 TECHNICAL",
-      highlight: "OBSTACLE ZONES",
+      heading: "15+ NATURAL &",
+      highlight: "TECHNICAL OBSTACLES",
       isObstacles: true,
       description:
-        "From the 35° incline ascent to the stone gully and articulation ridges, every zone tests driver nerve and vehicle physics.",
+        "From the 35° incline ascent to the stone gully and articulation ridges, every obstacle tests driver nerve and vehicle physics.",
     },
     {
       badge: "STAGE 04 // DESTINATION",
@@ -45,7 +45,7 @@ export const HeroContent = forwardRef<HeroContentHandle>((_, ref) => {
       highlight: "4X4 EXPERIENCE",
       subheading: "14–15 NOVEMBER 2026 // URIGAM",
       description:
-        "Claim your slot on South India's premier technical proving line. Strictly limited to 25–30 rigs to protect safety and trail integrity.",
+        "Claim your slot on South India's premier technical proving line. Strictly limited to 50+ registrations to protect safety and trail integrity.",
       isCTA: true,
     },
   ];
@@ -59,7 +59,10 @@ export const HeroContent = forwardRef<HeroContentHandle>((_, ref) => {
     "06 Hairpin Trench",
     "07 35° Steep Incline",
     "08 Vertical Step",
-    "09 Final Gauntlet",
+    "09 Riverbed Boulder Run",
+    "10 Loose Shale Ascent",
+    "11 Mogul Trenches",
+    "12 Final Gauntlet",
   ];
 
   return (

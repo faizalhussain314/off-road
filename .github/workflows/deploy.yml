@@ -74,4 +74,11 @@ jobs:
             node /home/optimusinfinity/madprotek/node_modules/pm2/bin/pm2 startOrReload ecosystem.config.cjs --update-env
             node /home/optimusinfinity/madprotek/node_modules/pm2/bin/pm2 save
             
+            # Ensure crontab has @reboot rule to auto-start PM2 after any server reboot
+            if ! crontab -l 2>/dev/null | grep -q "pm2 resurrect"; then
+              (crontab -l 2>/dev/null; echo "@reboot export PATH=\"/home/optimusinfinity/.nvm/versions/node/v20.20.2/bin:\$PATH\" && node /home/optimusinfinity/madprotek/node_modules/pm2/bin/pm2 resurrect >> /home/optimusinfinity/pm2_reboot.log 2>&1") | crontab -
+              echo "Added PM2 @reboot crontab persistence."
+            fi
+            
             echo "Deployment to adventure.madprotekcorp.com completed successfully!"
+
