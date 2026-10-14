@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   CheckCircle2,
   ArrowRight,
@@ -21,11 +21,13 @@ import {
   Upload,
   RefreshCw,
   Phone,
-  MessageSquare,
+  Clock,
   Sparkles,
-  ExternalLink,
+  Lock,
+  MessageSquare,
+  Tag,
 } from "lucide-react";
-import { Sponsors } from "./Sponsors";
+import { GoogleCaptcha } from "@/components/ui/GoogleCaptcha";
 
 interface Passenger {
   name: string;
@@ -33,13 +35,53 @@ interface Passenger {
   gender: string;
   mobile: string;
   relationship: string;
-  idProofName?: string;
+  idProofType?: string;
+  idProofUrl?: string;
+}
+
+interface PricingConfig {
+  online_registration_open: boolean;
+  max_slots: number;
+  price_early_bird: number;
+  price_regular: number;
+  price_organiser: number;
+  price_extreme: number;
+  price_additional_participant: number;
+  registration_closed_message: string;
 }
 
 export function Registration() {
-  const [currentStep, setCurrentStep] = useState<number>(1);
+  // Dynamic Pricing & Registration Status from Admin/DB
+  const [pricingConfig, setPricingConfig] = useState<PricingConfig>({
+    online_registration_open: true,
+    max_slots: 50,
+    price_early_bird: 5999,
+    price_regular: 6999,
+    price_organiser: 1999,
+    price_extreme: 999,
+    price_additional_participant: 699,
+    registration_closed_message:
+      "Online registrations for 4X4 Adventure Trail 2026 are currently closed. Please contact event marshals for waitlist or on-spot inquiry.",
+  });
+  const [isLoadingSettings, setIsLoadingSettings] = useState<boolean>(true);
+
+  // Stepper state:
+  // 0: Hero Landing / Selector (Screen 1)
+  // 1: Experience Detail & Inclusions (Screen 2)
+  // 2: Driver & Crew (Screen 3)
+  // 3: Vehicle Details (Screen 4)
+  // 3.5: Modification Details (Screen 5)
+  // 4: Vehicle Documents (Screen 6)
+  // 5: Experience & Safety (Screen 7)
+  // 6: Review & Payment with Google Captcha (Screen 8)
+  // 7: Registration Confirmed (Screen 9)
+  const [currentStep, setCurrentStep] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>("");
+
+  // Captcha state
+  const [captchaToken, setCaptchaToken] = useState<string>("");
+  const [captchaError, setCaptchaError] = useState<string>("");
 
   // Step 1: Experience Selection
   const [selectedExperience, setSelectedExperience] = useState<string>("OWN 4X4 EXPERIENCE");
@@ -47,112 +89,305 @@ export function Registration() {
   const [pricingTier, setPricingTier] = useState<"EARLY_BIRD" | "REGULAR">("REGULAR");
   const [additionalCount, setAdditionalCount] = useState<number>(0);
 
-  // Step 2: Driver & Crew
+  // Step 2: Driver & Crew (Clean empty initial values for real live usage)
   const [driver, setDriver] = useState({
     fullName: "",
     age: "",
-    gender: "Male",
+    gender: "",
     mobile: "",
-    whatsapp: "",
-    email: "",
     city: "",
+    relationship: "Primary Driver",
+    idProofType: "",
+    idProofUrl: "",
     idProofName: "",
   });
 
   const [passengers, setPassengers] = useState<Passenger[]>([
-    { name: "", age: "", gender: "Male", mobile: "", relationship: "Family", idProofName: "" },
-    { name: "", age: "", gender: "Female", mobile: "", relationship: "Family", idProofName: "" },
+    {
+      name: "",
+      age: "",
+      gender: "",
+      mobile: "",
+      relationship: "",
+      idProofType: "",
+      idProofUrl: "",
+    },
+    {
+      name: "",
+      age: "",
+      gender: "",
+      mobile: "",
+      relationship: "",
+      idProofType: "",
+      idProofUrl: "",
+    },
   ]);
 
-  // Step 3: Vehicle Details
+  // Step 3: Vehicle Details (Clean empty initial values)
   const [vehicle, setVehicle] = useState({
     ownerName: "",
     regNumber: "",
-    make: "Mahindra",
-    model: "Thar",
-    year: "2023",
-    colour: "Black",
-    fuelType: "Diesel",
-    transmission: "Manual",
-    drivetrain: "4x4",
-    isModified: true,
+    make: "",
+    model: "",
+    year: "",
+    colour: "",
+    fuelType: "",
+    transmission: "",
+    drivetrain: "",
+    isModified: false,
   });
 
+  // Step 3b: Modification Details (Clean empty initial values)
   const [modifications, setModifications] = useState({
-    suspension: "Lift Kit 2\"",
-    tyresType: "MT (Mud-Terrain)",
-    tyreSize: "285/70 R17",
-    wheelSize: "17 Inch",
-    differential: "Rear Mechanical Locker",
-    winch: "Electric 9,500 lbs",
-    snorkel: "Raised Snorkel Fitted",
-    bullBar: "Steel Offroad Bumper",
-    recoveryPoints: "Rated 4.75T Bow Shackles",
+    suspension: "",
+    tyresType: "",
+    tyreSize: "",
+    wheelSize: "",
+    differential: "",
+    winch: "",
+    snorkel: "",
+    bullBar: "",
+    recoveryPoints: "",
     otherMods: "",
     photos: {
-      front: "front_view.jpg",
-      rear: "rear_view.jpg",
-      side: "side_view.jpg",
+      front: "",
+      rear: "",
+      side: "",
     },
   });
 
-  // Step 4: Documents
+  // Step 4: Documents (Clean initial values)
   const [documents, setDocuments] = useState({
-    rcUploaded: true,
-    rcFileName: "rc_certificate.pdf",
-    insuranceCompany: "HDFC ERGO",
-    policyNumber: "POL-4920194",
-    insuranceExpiry: "2027-04-15",
-    insuranceUploaded: true,
-    insuranceFileName: "insurance_policy.pdf",
-    pucNumber: "TN-PUC-99214",
-    pucExpiry: "2027-02-10",
-    pucUploaded: true,
-    pucFileName: "puc_cert.pdf",
-    declarationAccurate: true,
-    declarationRoadworthy: true,
+    rcUploaded: false,
+    rcFileName: "",
+    rcUrl: "",
+    insuranceCompany: "",
+    policyNumber: "",
+    insuranceExpiry: "",
+    insuranceUploaded: false,
+    insuranceFileName: "",
+    insuranceUrl: "",
+    pucNumber: "",
+    pucExpiry: "",
+    pucUploaded: false,
+    pucFileName: "",
+    pucUrl: "",
+    declarationAccurate: false,
+    declarationRoadworthy: false,
   });
 
-  // Step 5: Experience & Safety
+  // Step 5: Experience & Safety (Clean initial values)
   const [safety, setSafety] = useState({
-    experienceLevel: "Experienced",
-    participatedBefore: "Yes",
-    eventCount: "3",
-    terrains: ["Rocky", "Mud", "Inclines", "Technical"],
-    bloodGroup: "O+",
-    allergies: "None",
-    medicalConditions: "None",
-    currentMedication: "None",
+    experienceLevel: "",
+    participatedBefore: "No",
+    eventCount: "",
+    terrains: [] as string[],
+    bloodGroup: "",
+    allergies: "",
+    medicalConditions: "",
+    currentMedication: "",
   });
+
+  // Promo code state
+  const [promoInput, setPromoInput] = useState<string>("");
+  const [isValidatingPromo, setIsValidatingPromo] = useState<boolean>(false);
+  const [promoError, setPromoError] = useState<string>("");
+  const [promoSuccess, setPromoSuccess] = useState<string>("");
+  const [appliedPromo, setAppliedPromo] = useState<{
+    code: string;
+    discount: number;
+    description?: string;
+  } | null>(null);
 
   // Confirmed Record State
   const [confirmedData, setConfirmedData] = useState<{
     registration_code: string;
     total_amount: number;
+    discount_amount?: number;
+    promo_code?: string;
     driver_name: string;
     experience_type: string;
     date: string;
+    payment_id?: string;
+    payment_method?: string;
+    payment_status?: string;
+    order_id?: string;
   } | null>(null);
 
-  // Pricing Calculation
-  const calculateTotal = () => {
-    let base = 6999;
-    if (selectedExperience === "OWN 4X4 EXPERIENCE") {
-      base = pricingTier === "EARLY_BIRD" ? 5999 : 6999;
-    } else if (selectedExperience === "ORGANISER 4X4 EXPERIENCE") {
-      base = 1999;
-    } else if (selectedExperience === "EXTREME 4X4 THRILL EXPERIENCE") {
-      base = 999;
+  // Real upload state
+  const [uploadingTarget, setUploadingTarget] = useState<string | null>(null);
+
+  // Fetch live pricing and registration status from admin settings
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        const res = await fetch("/api/settings");
+        const json = await res.json();
+        if (json.success && json.data) {
+          setPricingConfig(json.data);
+        }
+      } catch (err) {
+        console.error("Failed to load settings:", err);
+      } finally {
+        setIsLoadingSettings(false);
+      }
     }
-    const additional = additionalCount * 699;
+    loadSettings();
+  }, []);
+
+  // Dynamic Pricing Calculation based on admin configured prices
+  const calculateBaseTotal = () => {
+    let base = pricingConfig.price_regular;
+    if (selectedExperience.includes("OWN 4X4")) {
+      base = pricingTier === "EARLY_BIRD" ? pricingConfig.price_early_bird : pricingConfig.price_regular;
+    } else if (selectedExperience.includes("ORGANISER")) {
+      base = pricingConfig.price_organiser;
+    } else if (selectedExperience.includes("EXTREME")) {
+      base = pricingConfig.price_extreme;
+    }
+    const additional = additionalCount * pricingConfig.price_additional_participant;
     return base + additional;
+  };
+
+  const calculateTotal = () => {
+    const subtotal = calculateBaseTotal();
+    const discount = appliedPromo ? appliedPromo.discount : 0;
+    return Math.max(0, subtotal - discount);
+  };
+
+  const handleApplyPromo = async () => {
+    const code = promoInput.trim().toUpperCase();
+    if (!code) {
+      setPromoError("Please enter a promo code.");
+      return;
+    }
+    setIsValidatingPromo(true);
+    setPromoError("");
+    setPromoSuccess("");
+
+    try {
+      const subtotal = calculateBaseTotal();
+      const res = await fetch("/api/promocodes/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code,
+          total_amount: subtotal,
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.valid) {
+        setAppliedPromo({
+          code,
+          discount: json.discount,
+          description: json.promo?.description,
+        });
+        setPromoSuccess(json.message);
+      } else {
+        setPromoError(json.message || "Invalid or expired promo code.");
+        setAppliedPromo(null);
+      }
+    } catch (err) {
+      setPromoError("Failed to validate promo code. Please check your connection.");
+    } finally {
+      setIsValidatingPromo(false);
+    }
+  };
+
+  const handleRemovePromo = () => {
+    setAppliedPromo(null);
+    setPromoInput("");
+    setPromoError("");
+    setPromoSuccess("");
+  };
+
+  // Upload helper using real /api/upload
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, targetKey: string) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingTarget(targetKey);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("documentType", targetKey);
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (data.success && data.url) {
+        if (targetKey === "driver_id") {
+          setDriver((prev) => ({ ...prev, idProofUrl: data.url, idProofName: file.name }));
+        } else if (targetKey.startsWith("passenger_id_")) {
+          const idx = parseInt(targetKey.replace("passenger_id_", ""), 10);
+          setPassengers((prev) => {
+            const next = [...prev];
+            if (next[idx]) {
+              next[idx].idProofUrl = data.url;
+            }
+            return next;
+          });
+        } else if (targetKey === "photo_front") {
+          setModifications((prev) => ({
+            ...prev,
+            photos: { ...prev.photos, front: data.url },
+          }));
+        } else if (targetKey === "photo_rear") {
+          setModifications((prev) => ({
+            ...prev,
+            photos: { ...prev.photos, rear: data.url },
+          }));
+        } else if (targetKey === "photo_side") {
+          setModifications((prev) => ({
+            ...prev,
+            photos: { ...prev.photos, side: data.url },
+          }));
+        } else if (targetKey === "doc_rc") {
+          setDocuments((prev) => ({
+            ...prev,
+            rcUploaded: true,
+            rcFileName: file.name,
+            rcUrl: data.url,
+          }));
+        } else if (targetKey === "doc_insurance") {
+          setDocuments((prev) => ({
+            ...prev,
+            insuranceUploaded: true,
+            insuranceFileName: file.name,
+            insuranceUrl: data.url,
+          }));
+        } else if (targetKey === "doc_puc") {
+          setDocuments((prev) => ({
+            ...prev,
+            pucUploaded: true,
+            pucFileName: file.name,
+            pucUrl: data.url,
+          }));
+        }
+      }
+    } catch (err) {
+      console.error("Upload failed:", err);
+    } finally {
+      setUploadingTarget(null);
+    }
   };
 
   const handleAddPassenger = () => {
     setAdditionalCount((prev) => prev + 1);
     setPassengers((prev) => [
       ...prev,
-      { name: "", age: "", gender: "Male", mobile: "", relationship: "Friend", idProofName: "" },
+      {
+        name: "",
+        age: "",
+        gender: "",
+        mobile: "",
+        relationship: "",
+        idProofType: "",
+        idProofUrl: "",
+      },
     ]);
   };
 
@@ -173,34 +408,97 @@ export function Registration() {
     }));
   };
 
-  // Submission Handler
+  // Step validation before advancing
+  const validateStep2 = () => {
+    if (!driver.fullName.trim()) return "Driver full name is required.";
+    if (!driver.mobile.trim()) return "Driver mobile number is required.";
+    if (!driver.age.trim()) return "Driver age is required.";
+    if (!driver.city.trim()) return "Driver city is required.";
+    return null;
+  };
+
+  const validateStep3 = () => {
+    if (!vehicle.ownerName.trim()) return "Vehicle owner name is required.";
+    if (!vehicle.regNumber.trim()) return "Registration number is required.";
+    if (!vehicle.make.trim()) return "Vehicle make is required.";
+    if (!vehicle.model.trim()) return "Vehicle model is required.";
+    return null;
+  };
+
+  const validateStep4 = () => {
+    if (!documents.declarationAccurate || !documents.declarationRoadworthy) {
+      return "Please confirm the declaration checkboxes to proceed.";
+    }
+    return null;
+  };
+
+  // Dynamically load Cashfree JS SDK
+  const loadCashfreeScript = (): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      if ((window as any).Cashfree) {
+        resolve((window as any).Cashfree);
+        return;
+      }
+      const existingScript = document.getElementById("cashfree-js-sdk");
+      if (existingScript) {
+        existingScript.addEventListener("load", () => resolve((window as any).Cashfree));
+        return;
+      }
+      const script = document.createElement("script");
+      script.id = "cashfree-js-sdk";
+      script.src = "https://sdk.cashfree.com/js/v3/cashfree.js";
+      script.async = true;
+      script.onload = () => {
+        resolve((window as any).Cashfree);
+      };
+      script.onerror = () => {
+        reject(new Error("Unable to load Cashfree payment gateway SDK. Please check your network."));
+      };
+      document.body.appendChild(script);
+    });
+  };
+
+  // Submission handler with Cashfree Payment Gateway
   const handleFinalSubmit = async () => {
+    if (!pricingConfig.online_registration_open) {
+      setErrorMessage("Registration is currently closed by the event marshals.");
+      return;
+    }
+
+    if (!captchaToken) {
+      setCaptchaError("Please complete the Google reCAPTCHA verification to proceed.");
+      return;
+    }
+    setCaptchaError("");
     setIsSubmitting(true);
     setErrorMessage("");
 
     const totalAmount = calculateTotal();
     const payload = {
-      driver_name: driver.fullName || "Registered Driver",
-      phone: driver.mobile || "+91 98765 43210",
-      whatsapp: driver.whatsapp || driver.mobile || "+91 98765 43210",
-      email: driver.email || "driver@madprotekcorp.com",
-      driver_age: driver.age || "32",
+      driver_name: driver.fullName,
+      phone: driver.mobile,
+      whatsapp: driver.mobile,
+      email: "",
+      driver_age: driver.age,
       driver_gender: driver.gender,
-      driver_city: driver.city || "Bangalore",
-      driver_id_proof: driver.idProofName || "Uploaded ID",
+      driver_city: driver.city,
+      driver_id_proof: driver.idProofType,
+      driver_id_proof_url: driver.idProofUrl || driver.idProofName,
 
       experience_type: selectedExperience,
       experience_date: selectedDate,
       pricing_tier: pricingTier === "EARLY_BIRD" ? "Early Bird" : "Regular",
       total_amount: totalAmount,
+      discount_amount: appliedPromo ? appliedPromo.discount : 0,
+      promo_code: appliedPromo ? appliedPromo.code : undefined,
       additional_participants_count: additionalCount,
 
       passengers: passengers.filter((p) => p.name.trim().length > 0),
 
-      vehicle_owner: vehicle.ownerName || driver.fullName || "Driver",
-      vehicle_reg_number: vehicle.regNumber || "TN 10 AB 1234",
+      vehicle_owner: vehicle.ownerName || driver.fullName,
+      vehicle_reg_number: vehicle.regNumber,
       vehicle_make: vehicle.make,
-      vehicle_model: `${vehicle.make} ${vehicle.model}`,
+      vehicle_model: vehicle.make ? `${vehicle.make} ${vehicle.model}` : vehicle.model,
       manufacturing_year: vehicle.year,
       vehicle_colour: vehicle.colour,
       fuel_type: vehicle.fuelType,
@@ -209,57 +507,145 @@ export function Registration() {
       is_modified: vehicle.isModified,
       rig_class: vehicle.isModified ? "Pro-Modified (33\"–35\")" : "Standard Proving Spec",
       modifications: vehicle.isModified
-        ? `${modifications.suspension}, ${modifications.tyresType} (${modifications.tyreSize}), ${modifications.differential}, ${modifications.winch}`
+        ? `${modifications.suspension || ""}, ${modifications.tyresType || ""} (${modifications.tyreSize || ""}), ${modifications.differential || ""}, ${modifications.winch || ""}`.replace(/^, |, $/g, "")
         : "Stock Configuration",
       modification_details: vehicle.isModified ? modifications : undefined,
 
       documents: {
         rc_uploaded: documents.rcUploaded,
+        rc_file: documents.rcFileName,
+        rc_url: documents.rcUrl,
         insurance_company: documents.insuranceCompany,
         insurance_policy: documents.policyNumber,
         insurance_expiry: documents.insuranceExpiry,
         insurance_uploaded: documents.insuranceUploaded,
+        insurance_url: documents.insuranceUrl,
         puc_number: documents.pucNumber,
         puc_expiry: documents.pucExpiry,
         puc_uploaded: documents.pucUploaded,
+        puc_url: documents.pucUrl,
       },
 
       safety_experience: safety,
-      status: "SLOT_CONFIRMED",
+      captcha_token: captchaToken,
+      captcha_verified: true,
       source: "ONLINE_WEB",
     };
 
     try {
-      const res = await fetch("/api/registrations", {
+      // 1. Create Order via Cashfree API
+      const res = await fetch("/api/cashfree/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      const json = await res.json();
-      if (json.success && json.data) {
+      const orderData = await res.json();
+      if (!res.ok || !orderData.success) {
+        throw new Error(orderData.error || "Failed to initiate payment session with Cashfree.");
+      }
+
+      const {
+        order_id,
+        registration_id,
+        registration_code,
+        payment_session_id,
+        is_mock,
+        environment,
+      } = orderData;
+
+      // 2. Handle Mock / Test Sandbox mode if Cashfree API credentials are not set
+      if (is_mock) {
+        const verifyRes = await fetch("/api/cashfree/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ order_id, registration_id }),
+        });
+        const verifyData = await verifyRes.json();
+
         setConfirmedData({
-          registration_code: json.data.registration_code || "MAT26-0012",
+          registration_code: registration_code || "MAT26-0001",
           total_amount: totalAmount,
+          discount_amount: appliedPromo ? appliedPromo.discount : 0,
+          promo_code: appliedPromo ? appliedPromo.code : undefined,
           driver_name: payload.driver_name,
           experience_type: payload.experience_type,
           date: payload.experience_date,
+          payment_id: verifyData.payment_id || `CF_TEST_${Date.now()}`,
+          payment_method: verifyData.payment_method || "UPI (Sandbox Test)",
+          payment_status: "PAID",
+          order_id,
         });
-        setCurrentStep(7); // Confirmed screen
-      } else {
-        setErrorMessage(json.error || "Submission failed. Please check your fields.");
+        setCurrentStep(7);
+        setIsSubmitting(false);
+        return;
       }
-    } catch (err: any) {
-      setErrorMessage("Network error occurred. Your entry has been recorded in fallback offline mode.");
-      setConfirmedData({
-        registration_code: "MAT26-0012",
-        total_amount: totalAmount,
-        driver_name: payload.driver_name,
-        experience_type: payload.experience_type,
-        date: payload.experience_date,
+
+      // 3. Real Cashfree SDK Checkout Flow
+      const CashfreeSDK = await loadCashfreeScript();
+      const cashfreeInstance = CashfreeSDK({
+        mode: environment === "PRODUCTION" ? "production" : "sandbox",
       });
-      setCurrentStep(7);
-    } finally {
+
+      // Launch Cashfree checkout popup modal
+      cashfreeInstance
+        .checkout({
+          paymentSessionId: payment_session_id,
+          redirectTarget: "_modal",
+        })
+        .then(async (result: any) => {
+          if (result.error) {
+            console.warn("Cashfree checkout error / cancelled:", result.error);
+            setErrorMessage(result.error.message || "Payment cancelled or could not be completed.");
+            setIsSubmitting(false);
+            return;
+          }
+
+          // Verify payment capture with backend
+          try {
+            const verifyRes = await fetch("/api/cashfree/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ order_id, registration_id }),
+            });
+            const verifyData = await verifyRes.json();
+
+            if (verifyData.verified && verifyData.payment_status === "PAID") {
+              setConfirmedData({
+                registration_code: registration_code || "MAT26-0001",
+                total_amount: totalAmount,
+                discount_amount: appliedPromo ? appliedPromo.discount : 0,
+                promo_code: appliedPromo ? appliedPromo.code : undefined,
+                driver_name: payload.driver_name,
+                experience_type: payload.experience_type,
+                date: payload.experience_date,
+                payment_id: verifyData.payment_id,
+                payment_method: verifyData.payment_method || "Online Payment",
+                payment_status: "PAID",
+                order_id,
+              });
+              setCurrentStep(7);
+            } else {
+              setErrorMessage(
+                verifyData.error ||
+                  "Payment capture verification is pending. If money was debited, your slot will confirm automatically via webhook."
+              );
+            }
+          } catch (err: any) {
+            console.error("Verification failed:", err);
+            setErrorMessage("Payment verification failed. Please contact event marshals.");
+          } finally {
+            setIsSubmitting(false);
+          }
+        })
+        .catch((err: any) => {
+          console.error("Cashfree SDK invocation error:", err);
+          setErrorMessage(err.message || "Could not launch Cashfree checkout.");
+          setIsSubmitting(false);
+        });
+    } catch (err: any) {
+      console.error(err);
+      setErrorMessage(err.message || "Payment processing error occurred. Please try again.");
       setIsSubmitting(false);
     }
   };
@@ -273,1382 +659,2039 @@ export function Registration() {
     { num: 6, label: "Payment" },
   ];
 
+  const displayStepNum = currentStep === 3.5 ? 3 : currentStep;
+
   return (
-    <section id="registration" className="relative w-full py-16 sm:py-24 bg-neutral-900 text-neutral-100 min-h-screen">
+    <section id="registration" className="relative w-full py-4 sm:py-6 lg:py-8 bg-[#0d1117] text-neutral-800 min-h-[calc(100vh-4rem)] flex flex-col justify-start">
       {/* Background Ambience */}
-      <div className="absolute inset-0 bg-[radial-gradient(#262626_1px,transparent_1px)] [background-size:24px_24px] opacity-25 pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(#1f2937_1px,transparent_1px)] [background-size:28px_28px] opacity-30 pointer-events-none" />
 
-      <div className="relative max-w-5xl mx-auto px-4 sm:px-6">
-        {/* Brand Top Header */}
-        <div className="flex items-center justify-between border-b border-neutral-800 pb-5 mb-8">
-          <div className="flex items-center space-x-3">
-            <img src="/M-word-logo.png" alt="MadProTek" className="h-8 w-auto object-contain" />
-            <div>
-              <span className="font-outfit font-black tracking-wider text-lg text-white">MADPROTEK</span>
-              <span className="text-[10px] font-mono tracking-widest text-amber-500 block">4X4 ADVENTURE TRAIL 2026</span>
+      <div className="relative w-full max-w-6xl xl:max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+        {/* ======================================================== */}
+        {/* REGISTRATION CLOSED BANNER (WHEN DISABLED BY ADMIN) */}
+        {/* ======================================================== */}
+        {!pricingConfig.online_registration_open && (
+          <div className="mb-6 p-5 bg-amber-950/90 border-2 border-amber-600 rounded-2xl text-center text-white space-y-2 shadow-2xl">
+            <div className="w-10 h-10 rounded-full bg-amber-600/30 border border-amber-500 flex items-center justify-center mx-auto text-amber-400">
+              <Lock className="w-5 h-5" />
             </div>
-          </div>
-          <div className="flex items-center space-x-2 text-xs font-mono text-neutral-400 bg-neutral-800/80 px-3 py-1.5 rounded-full border border-neutral-700">
-            <Shield className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Secure Registration</span>
-          </div>
-        </div>
-
-        {/* Multi-Step Indicator Bar (Only for Steps 1 to 6) */}
-        {currentStep <= 6 && (
-          <div className="mb-10">
-            <div className="grid grid-cols-6 gap-2 sm:gap-4 relative">
-              {stepsList.map((step) => {
-                const isActive = currentStep === step.num;
-                const isPassed = currentStep > step.num;
-                return (
-                  <div key={step.num} className="flex flex-col items-center text-center">
-                    <div
-                      className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-mono font-bold text-xs sm:text-sm transition-all duration-300 ${
-                        isPassed
-                          ? "bg-emerald-600 text-white shadow-md shadow-emerald-900/50"
-                          : isActive
-                          ? "bg-amber-600 text-white ring-4 ring-amber-600/20 shadow-md shadow-amber-900/40"
-                          : "bg-neutral-800 text-neutral-500 border border-neutral-700"
-                      }`}
-                    >
-                      {isPassed ? <Check className="w-4 h-4 sm:w-5 sm:h-5" /> : step.num}
-                    </div>
-                    <span
-                      className={`mt-2 font-mono text-[10px] sm:text-xs uppercase tracking-wider hidden sm:block ${
-                        isActive ? "text-amber-400 font-bold" : isPassed ? "text-emerald-400" : "text-neutral-500"
-                      }`}
-                    >
-                      {step.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            {/* Progress line */}
-            <div className="w-full bg-neutral-800 h-1 mt-4 rounded-full overflow-hidden">
-              <div
-                className="bg-amber-600 h-full transition-all duration-300 ease-out"
-                style={{ width: `${((currentStep - 1) / 5) * 100}%` }}
-              />
+            <h2 className="font-outfit text-xl font-black uppercase text-amber-400 tracking-tight">
+              ONLINE REGISTRATIONS CURRENTLY CLOSED
+            </h2>
+            <p className="text-xs text-neutral-300 max-w-xl mx-auto font-sans leading-relaxed">
+              {pricingConfig.registration_closed_message}
+            </p>
+            <div className="pt-1 flex flex-wrap items-center justify-center gap-3">
+              <a
+                href="https://wa.me/919876543210?text=Hi%2C%20I%20would%20like%20to%20inquire%20about%20off-road%20event%20waitlist"
+                target="_blank"
+                rel="noreferrer"
+                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg text-xs font-mono font-bold uppercase flex items-center space-x-2 transition-colors"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>WhatsApp Marshal Helpdesk</span>
+              </a>
+              <a
+                href="tel:+919876543210"
+                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white rounded-lg text-xs font-mono font-bold uppercase flex items-center space-x-2 transition-colors"
+              >
+                <Phone className="w-3.5 h-3.5 text-amber-400" />
+                <span>Call Hotline</span>
+              </a>
             </div>
           </div>
         )}
 
-        {errorMessage && (
-          <div className="mb-6 p-4 bg-red-950/80 border border-red-600/50 rounded-lg text-red-200 text-xs font-sans flex items-center space-x-3">
-            <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
-            <span>{errorMessage}</span>
-          </div>
-        )}
-
-        {/* ================= STEP 1: EXPERIENCE SELECTION ================= */}
-        {currentStep === 1 && (
-          <div className="space-y-8 animate-fadeIn">
-            {/* Main Hero Header */}
-            <div className="text-center space-y-2">
-              <span className="text-amber-500 font-mono text-xs font-bold tracking-tactical uppercase">
-                14 – 15 NOVEMBER 2026 // URIGAM VILLAGE, ANCHETTY - DENKANIKOTTAI
-              </span>
-              <h1 className="font-outfit text-3xl sm:text-5xl font-black uppercase text-white tracking-tight">
+        {/* ======================================================== */}
+        {/* SCREEN 1: HERO EXPERIENCE SELECTOR (WHEN STEP === 0) */}
+        {/* ======================================================== */}
+        {currentStep === 0 && (
+          <div className="relative rounded-2xl overflow-hidden border border-neutral-800 shadow-2xl bg-neutral-950 text-white p-5 sm:p-8">
+            {/* Top Badge */}
+            <div className="text-center space-y-2 mb-6">
+              <div className="flex items-center justify-center space-x-2">
+                <img src="/M-word-logo.png" alt="MadProTek" className="h-6 w-auto object-contain" />
+                <span className="font-outfit font-black tracking-wider text-lg text-white">MADPROTEK</span>
+              </div>
+              <h1 className="font-outfit text-2xl sm:text-4xl font-black uppercase text-amber-500 tracking-tight">
                 4X4 ADVENTURE TRAIL 2026
               </h1>
-              <p className="font-mono text-xs sm:text-sm text-neutral-400 tracking-wider uppercase">
-                REAL TERRAIN. REAL CHALLENGE. REAL PASSION.
+              <div className="flex flex-wrap items-center justify-center gap-2 text-xs font-mono text-neutral-300">
+                <span className="flex items-center space-x-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-amber-500" />
+                  <span>14 - 15 NOVEMBER 2026</span>
+                </span>
+                <span className="text-neutral-500 hidden sm:inline">•</span>
+                <span className="flex items-center space-x-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Urigam Village, Anchetty - Denkanikottai</span>
+                </span>
+              </div>
+              <p className="font-mono text-[11px] text-neutral-400 tracking-widest uppercase">
+                REAL TERRAIN. REAL CHALLENGE. REAL PEOPLE.
               </p>
             </div>
 
-            {/* Experience Cards Selection */}
-            <div className="space-y-4">
-              {/* Option 1: Own 4x4 Experience */}
+            {/* 3 Experience Cards - Horizontal 3-column Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              {/* Card 1: Own 4x4 */}
               <div
                 onClick={() => {
+                  if (!pricingConfig.online_registration_open) return;
                   setSelectedExperience("OWN 4X4 EXPERIENCE");
                   setSelectedDate("14 NOV 2026");
+                  setCurrentStep(1);
                 }}
-                className={`cursor-pointer rounded-xl border p-5 sm:p-6 transition-all duration-200 ${
-                  selectedExperience === "OWN 4X4 EXPERIENCE"
-                    ? "bg-neutral-800/90 border-amber-500 ring-2 ring-amber-500/30 shadow-xl"
-                    : "bg-neutral-800/40 border-neutral-700/80 hover:border-neutral-600"
+                className={`cursor-pointer group relative bg-neutral-900 hover:bg-neutral-850 border-2 border-amber-600 rounded-xl p-5 flex flex-col justify-between transition-all shadow-lg hover:shadow-amber-900/30 ${
+                  !pricingConfig.online_registration_open ? "opacity-60 cursor-not-allowed" : ""
                 }`}
               >
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div>
-                    <span className="px-2.5 py-1 bg-amber-600/20 text-amber-400 border border-amber-500/30 text-[10px] font-mono font-bold rounded uppercase">
-                      DAY 1 // 14 NOV 2026
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[10px] font-mono font-bold bg-amber-600 text-white px-2 py-0.5 rounded">
+                      DAY 1
                     </span>
-                    <h3 className="font-outfit text-xl sm:text-2xl font-black uppercase text-white mt-2">
-                      OWN 4X4 EXPERIENCE
-                    </h3>
-                    <p className="text-xs text-neutral-400 font-sans mt-1">
-                      Conquer 15+ Natural & Technical Obstacles in your personal off-road machine with marshal supervision.
-                    </p>
+                    <div className="w-9 h-9 rounded-lg bg-neutral-800 border border-neutral-700 flex items-center justify-center">
+                      <Car className="w-5 h-5 text-amber-500" />
+                    </div>
                   </div>
-
-                  {/* Pricing Selector Tabs */}
-                  <div className="flex items-center space-x-2 bg-neutral-900 p-1.5 rounded-lg border border-neutral-700">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedExperience("OWN 4X4 EXPERIENCE");
-                        setPricingTier("EARLY_BIRD");
-                      }}
-                      className={`px-3 py-2 rounded text-left transition-all ${
-                        pricingTier === "EARLY_BIRD"
-                          ? "bg-amber-600 text-white font-bold"
-                          : "text-neutral-400 hover:text-white"
-                      }`}
-                    >
-                      <div className="font-outfit text-base font-black">₹5,999</div>
-                      <div className="text-[9px] font-mono uppercase tracking-wider">Early Bird (First 10)</div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedExperience("OWN 4X4 EXPERIENCE");
-                        setPricingTier("REGULAR");
-                      }}
-                      className={`px-3 py-2 rounded text-left transition-all ${
-                        pricingTier === "REGULAR"
-                          ? "bg-amber-600 text-white font-bold"
-                          : "text-neutral-400 hover:text-white"
-                      }`}
-                    >
-                      <div className="font-outfit text-base font-black">₹6,999</div>
-                      <div className="text-[9px] font-mono uppercase tracking-wider">Regular (Next 10)</div>
-                    </button>
-                  </div>
+                  <h3 className="font-outfit font-black text-lg text-white">OWN 4X4 EXPERIENCE</h3>
+                  <p className="text-xs text-neutral-400 mt-1">14 NOV 2026 • Drive your personal machine</p>
                 </div>
 
-                {/* Inclusions Detail Box */}
-                {selectedExperience === "OWN 4X4 EXPERIENCE" && (
-                  <div className="mt-5 pt-5 border-t border-neutral-700/80 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <div className="text-[11px] font-mono text-amber-400 font-bold uppercase mb-2">INCLUDES:</div>
-                      <ul className="text-xs text-neutral-300 space-y-1.5">
-                        <li className="flex items-center space-x-2">
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>1 Registered Driver + 2 Family/Friends</span>
-                        </li>
-                        <li className="flex items-center space-x-2">
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>15+ Natural & Technical Obstacles</span>
-                        </li>
-                        <li className="flex items-center space-x-2">
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Morning & Afternoon Trail Food</span>
-                        </li>
-                        <li className="flex items-center space-x-2">
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Official Photography & Videography</span>
-                        </li>
-                        <li className="flex items-center space-x-2">
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Participant Recognition & Trail Decals</span>
-                        </li>
-                      </ul>
+                <div className="pt-4 border-t border-neutral-800 mt-4 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-bold text-amber-400">
+                      ₹{pricingConfig.price_early_bird.toLocaleString()}{" "}
+                      <span className="text-xs font-normal text-neutral-400">Early Bird</span>
                     </div>
-
-                    <div className="bg-neutral-900/90 p-4 rounded-lg border border-neutral-800 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-sans text-xs font-bold text-white">Additional Participant</div>
-                          <div className="text-[10px] font-mono text-neutral-400">₹699 / Person beyond standard crew</div>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (additionalCount > 0) setAdditionalCount(additionalCount - 1);
-                            }}
-                            className="w-7 h-7 bg-neutral-800 hover:bg-neutral-700 text-white rounded font-mono text-sm"
-                          >
-                            -
-                          </button>
-                          <span className="font-mono font-bold text-sm px-2 text-amber-400">{additionalCount}</span>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setAdditionalCount(additionalCount + 1);
-                            }}
-                            className="w-7 h-7 bg-neutral-800 hover:bg-neutral-700 text-white rounded font-mono text-sm"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="text-[10px] text-neutral-400 italic border-t border-neutral-800 pt-2">
-                        * Only the registered driver is permitted to drive the participating vehicle. Passengers are not allowed to drive.
-                      </div>
+                    <div className="text-xs text-neutral-400">
+                      ₹{pricingConfig.price_regular.toLocaleString()}{" "}
+                      <span className="text-[10px]">Regular</span>
                     </div>
                   </div>
-                )}
+                  <div className="w-8 h-8 rounded-full bg-amber-600 text-white flex items-center justify-center group-hover:translate-x-1 transition-transform">
+                    <ArrowRight className="w-4 h-4" />
+                  </div>
+                </div>
               </div>
 
-              {/* Option 2: Organiser 4x4 Experience */}
+              {/* Card 2: Organiser 4x4 */}
               <div
                 onClick={() => {
+                  if (!pricingConfig.online_registration_open) return;
                   setSelectedExperience("ORGANISER 4X4 EXPERIENCE");
                   setSelectedDate("15 NOV 2026");
+                  setCurrentStep(1);
                 }}
-                className={`cursor-pointer rounded-xl border p-5 transition-all duration-200 flex items-center justify-between ${
-                  selectedExperience === "ORGANISER 4X4 EXPERIENCE"
-                    ? "bg-neutral-800/90 border-amber-500 ring-2 ring-amber-500/30"
-                    : "bg-neutral-800/40 border-neutral-700/80 hover:border-neutral-600"
+                className={`cursor-pointer group relative bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 hover:border-neutral-700 rounded-xl p-5 flex flex-col justify-between transition-all ${
+                  !pricingConfig.online_registration_open ? "opacity-60 cursor-not-allowed" : ""
                 }`}
               >
                 <div>
-                  <span className="px-2 py-0.5 bg-neutral-700 text-neutral-300 text-[9px] font-mono font-bold rounded uppercase">
-                    DAY 2 // 15 NOV 2026
-                  </span>
-                  <h3 className="font-outfit text-lg sm:text-xl font-bold uppercase text-white mt-1">
-                    ORGANISER 4X4 EXPERIENCE
-                  </h3>
-                  <p className="text-xs text-neutral-400 font-sans">
-                    Ride along in fully built Pro rigs guided by master marshals through extreme technical terrain.
-                  </p>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[10px] font-mono font-bold bg-neutral-700 text-neutral-200 px-2 py-0.5 rounded">
+                      DAY 2
+                    </span>
+                    <div className="w-9 h-9 rounded-lg bg-neutral-800 border border-neutral-700 flex items-center justify-center">
+                      <Car className="w-5 h-5 text-neutral-400" />
+                    </div>
+                  </div>
+                  <h3 className="font-outfit font-black text-lg text-white">ORGANISER 4X4 EXPERIENCE</h3>
+                  <p className="text-xs text-neutral-400 mt-1">15 NOV 2026 • Ride with event marshals</p>
                 </div>
-                <div className="text-right">
-                  <div className="font-outfit text-xl font-black text-amber-400">₹1,999</div>
-                  <div className="text-[9px] font-mono text-neutral-400 uppercase">/ Person</div>
+
+                <div className="pt-4 border-t border-neutral-800 mt-4 flex items-center justify-between">
+                  <div className="text-sm font-bold text-white">
+                    ₹{pricingConfig.price_organiser.toLocaleString()}{" "}
+                    <span className="text-xs text-neutral-400 font-normal">/ Person</span>
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-neutral-800 text-neutral-400 flex items-center justify-center group-hover:translate-x-1 transition-transform">
+                    <ArrowRight className="w-4 h-4" />
+                  </div>
                 </div>
               </div>
 
-              {/* Option 3: Extreme 4x4 Thrill Experience */}
+              {/* Card 3: Extreme Thrill */}
               <div
                 onClick={() => {
+                  if (!pricingConfig.online_registration_open) return;
                   setSelectedExperience("EXTREME 4X4 THRILL EXPERIENCE");
                   setSelectedDate("15 NOV 2026");
+                  setCurrentStep(1);
                 }}
-                className={`cursor-pointer rounded-xl border p-5 transition-all duration-200 flex items-center justify-between ${
-                  selectedExperience === "EXTREME 4X4 THRILL EXPERIENCE"
-                    ? "bg-neutral-800/90 border-amber-500 ring-2 ring-amber-500/30"
-                    : "bg-neutral-800/40 border-neutral-700/80 hover:border-neutral-600"
+                className={`cursor-pointer group relative bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 hover:border-neutral-700 rounded-xl p-5 flex flex-col justify-between transition-all ${
+                  !pricingConfig.online_registration_open ? "opacity-60 cursor-not-allowed" : ""
                 }`}
               >
                 <div>
-                  <span className="px-2 py-0.5 bg-neutral-700 text-neutral-300 text-[9px] font-mono font-bold rounded uppercase">
-                    DAY 2 // 15 NOV 2026
-                  </span>
-                  <h3 className="font-outfit text-lg sm:text-xl font-bold uppercase text-white mt-1">
-                    EXTREME 4X4 THRILL EXPERIENCE
-                  </h3>
-                  <p className="text-xs text-neutral-400 font-sans">
-                    Intense adrenaline rock crawl and incline descent thrill passenger runs.
-                  </p>
-                </div>
-                <div className="text-right">
-                  <div className="font-outfit text-xl font-black text-amber-400">₹999</div>
-                  <div className="text-[9px] font-mono text-neutral-400 uppercase">/ Person</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Badges strip */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-3 border-y border-neutral-800 text-center font-mono text-xs text-neutral-300">
-              <div className="p-2 bg-neutral-800/40 rounded border border-neutral-800">15+ Natural Obstacles</div>
-              <div className="p-2 bg-neutral-800/40 rounded border border-neutral-800">Expert Support</div>
-              <div className="p-2 bg-neutral-800/40 rounded border border-neutral-800">Food Included</div>
-              <div className="p-2 bg-neutral-800/40 rounded border border-neutral-800">Professional Media</div>
-            </div>
-
-            {/* Action Bottom Bar */}
-            <div className="flex items-center justify-between pt-4">
-              <div className="text-xs font-mono text-amber-400 font-bold bg-amber-950/40 border border-amber-800/60 px-4 py-2 rounded">
-                2/10 VEHICLE SLOTS ONLY
-              </div>
-              <button
-                type="button"
-                onClick={() => setCurrentStep(2)}
-                className="px-8 py-3.5 bg-amber-600 hover:bg-amber-500 text-white font-outfit font-black text-sm uppercase tracking-wider rounded-lg shadow-lg hover:shadow-amber-600/30 flex items-center space-x-2 transition-all"
-              >
-                <span>Continue</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ================= STEP 2: DRIVER & CREW DETAILS ================= */}
-        {currentStep === 2 && (
-          <div className="space-y-6 animate-fadeIn bg-neutral-800/50 border border-neutral-700/80 rounded-2xl p-6 sm:p-8">
-            <div>
-              <h2 className="font-outfit text-2xl font-black uppercase text-white flex items-center space-x-2">
-                <User className="w-6 h-6 text-amber-500" />
-                <span>Driver Details</span>
-              </h2>
-              <p className="text-xs font-mono text-neutral-400 uppercase tracking-wider">
-                Primary driver information for technical scrutineering and event insurance
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[11px] font-mono text-neutral-300 uppercase mb-1">Full Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Manikandan S"
-                  value={driver.fullName}
-                  onChange={(e) => setDriver({ ...driver, fullName: e.target.value })}
-                  className="w-full px-4 py-3 bg-neutral-900 border border-neutral-700 rounded-lg text-white text-sm focus:border-amber-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] font-mono text-neutral-300 uppercase mb-1">Age *</label>
-                  <input
-                    type="number"
-                    placeholder="32"
-                    value={driver.age}
-                    onChange={(e) => setDriver({ ...driver, age: e.target.value })}
-                    className="w-full px-4 py-3 bg-neutral-900 border border-neutral-700 rounded-lg text-white text-sm focus:border-amber-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-mono text-neutral-300 uppercase mb-1">Gender *</label>
-                  <select
-                    value={driver.gender}
-                    onChange={(e) => setDriver({ ...driver, gender: e.target.value })}
-                    className="w-full px-4 py-3 bg-neutral-900 border border-neutral-700 rounded-lg text-white text-sm focus:border-amber-500 focus:outline-none"
-                  >
-                    <option>Male</option>
-                    <option>Female</option>
-                    <option>Other</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-mono text-neutral-300 uppercase mb-1">Mobile Number *</label>
-                <input
-                  type="tel"
-                  required
-                  placeholder="+91 98765 43210"
-                  value={driver.mobile}
-                  onChange={(e) => setDriver({ ...driver, mobile: e.target.value })}
-                  className="w-full px-4 py-3 bg-neutral-900 border border-neutral-700 rounded-lg text-white text-sm focus:border-amber-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-mono text-neutral-300 uppercase mb-1">WhatsApp Number</label>
-                <input
-                  type="tel"
-                  placeholder="+91 98765 43210"
-                  value={driver.whatsapp}
-                  onChange={(e) => setDriver({ ...driver, whatsapp: e.target.value })}
-                  className="w-full px-4 py-3 bg-neutral-900 border border-neutral-700 rounded-lg text-white text-sm focus:border-amber-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-mono text-neutral-300 uppercase mb-1">Email Address *</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="driver@domain.com"
-                  value={driver.email}
-                  onChange={(e) => setDriver({ ...driver, email: e.target.value })}
-                  className="w-full px-4 py-3 bg-neutral-900 border border-neutral-700 rounded-lg text-white text-sm focus:border-amber-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-mono text-neutral-300 uppercase mb-1">City *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Bangalore / Chennai / Coimbatore"
-                  value={driver.city}
-                  onChange={(e) => setDriver({ ...driver, city: e.target.value })}
-                  className="w-full px-4 py-3 bg-neutral-900 border border-neutral-700 rounded-lg text-white text-sm focus:border-amber-500 focus:outline-none"
-                />
-              </div>
-            </div>
-
-            {/* Crew / Passengers List */}
-            <div className="pt-6 border-t border-neutral-700/80 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-outfit text-lg font-bold uppercase text-white flex items-center space-x-2">
-                    <Users className="w-5 h-5 text-amber-500" />
-                    <span>Crew & Passengers (Included: 2 Passengers)</span>
-                  </h3>
-                  <p className="text-xs text-neutral-400 font-sans">
-                    Passengers will receive safety wristbands and event hospitality passes.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleAddPassenger}
-                  className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 border border-neutral-600 text-amber-400 text-xs font-mono font-bold rounded flex items-center space-x-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Additional Passenger (₹699)</span>
-                </button>
-              </div>
-
-              {passengers.map((passenger, index) => (
-                <div key={index} className="p-4 bg-neutral-900/80 border border-neutral-800 rounded-xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-mono font-bold text-amber-400 uppercase">
-                      Passenger {index + 1} {index >= 2 && "(Additional Participant)"}
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[10px] font-mono font-bold bg-neutral-700 text-neutral-200 px-2 py-0.5 rounded">
+                      DAY 2
                     </span>
-                    {passengers.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemovePassenger(index)}
-                        className="text-neutral-500 hover:text-red-400 text-xs"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
+                    <div className="w-9 h-9 rounded-lg bg-neutral-800 border border-neutral-700 flex items-center justify-center">
+                      <Car className="w-5 h-5 text-neutral-400" />
+                    </div>
                   </div>
+                  <h3 className="font-outfit font-black text-lg text-white">EXTREME 4X4 THRILL</h3>
+                  <p className="text-xs text-neutral-400 mt-1">15 NOV 2026 • High-intensity run</p>
+                </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                    <div className="sm:col-span-2">
-                      <input
-                        type="text"
-                        placeholder="Full Name"
-                        value={passenger.name}
-                        onChange={(e) => {
-                          const updated = [...passengers];
-                          updated[index].name = e.target.value;
-                          setPassengers(updated);
-                        }}
-                        className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-xs text-white"
-                      />
-                    </div>
-                    <div>
-                      <input
-                        type="number"
-                        placeholder="Age"
-                        value={passenger.age}
-                        onChange={(e) => {
-                          const updated = [...passengers];
-                          updated[index].age = e.target.value;
-                          setPassengers(updated);
-                        }}
-                        className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-xs text-white"
-                      />
-                    </div>
-                    <div>
-                      <select
-                        value={passenger.gender}
-                        onChange={(e) => {
-                          const updated = [...passengers];
-                          updated[index].gender = e.target.value;
-                          setPassengers(updated);
-                        }}
-                        className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-xs text-white"
-                      >
-                        <option>Male</option>
-                        <option>Female</option>
-                      </select>
-                    </div>
+                <div className="pt-4 border-t border-neutral-800 mt-4 flex items-center justify-between">
+                  <div className="text-sm font-bold text-white">
+                    ₹{pricingConfig.price_extreme.toLocaleString()}{" "}
+                    <span className="text-xs text-neutral-400 font-normal">/ Person</span>
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-neutral-800 text-neutral-400 flex items-center justify-center group-hover:translate-x-1 transition-transform">
+                    <ArrowRight className="w-4 h-4" />
                   </div>
                 </div>
-              ))}
+              </div>
             </div>
 
-            {/* Stepper Buttons */}
-            <div className="flex items-center justify-between pt-6 border-t border-neutral-700/80">
-              <button
-                type="button"
-                onClick={() => setCurrentStep(1)}
-                className="px-6 py-3 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-mono text-xs uppercase tracking-wider rounded-lg flex items-center space-x-2"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Back</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!driver.fullName || !driver.mobile) {
-                    setErrorMessage("Please fill in Driver Full Name and Mobile Number.");
-                    return;
-                  }
-                  setErrorMessage("");
-                  setCurrentStep(3);
-                }}
-                className="px-8 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-outfit font-black text-sm uppercase tracking-wider rounded-lg flex items-center space-x-2"
-              >
-                <span>Save & Continue</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+            {/* Perks Bottom Bar */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-5 border-t border-neutral-800 text-center font-mono text-xs text-neutral-300">
+              <div className="p-2 bg-neutral-900/60 rounded border border-neutral-800">15+ Obstacles</div>
+              <div className="p-2 bg-neutral-900/60 rounded border border-neutral-800">Expert Support</div>
+              <div className="p-2 bg-neutral-900/60 rounded border border-neutral-800">Food Included</div>
+              <div className="p-2 bg-neutral-900/60 rounded border border-neutral-800">Professional Media</div>
             </div>
           </div>
         )}
 
-        {/* ================= STEP 3: VEHICLE DETAILS & MODS ================= */}
-        {currentStep === 3 && (
-          <div className="space-y-6 animate-fadeIn bg-neutral-800/50 border border-neutral-700/80 rounded-2xl p-6 sm:p-8">
-            <div>
-              <h2 className="font-outfit text-2xl font-black uppercase text-white flex items-center space-x-2">
-                <Car className="w-6 h-6 text-amber-500" />
-                <span>Vehicle Details</span>
-              </h2>
-              <p className="text-xs font-mono text-neutral-400 uppercase tracking-wider">
-                Tell us about your 4x4 machine for technical classification
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[11px] font-mono text-neutral-300 uppercase mb-1">Owner Name *</label>
-                <input
-                  type="text"
-                  placeholder="Owner Name as in RC"
-                  value={vehicle.ownerName || driver.fullName}
-                  onChange={(e) => setVehicle({ ...vehicle, ownerName: e.target.value })}
-                  className="w-full px-4 py-3 bg-neutral-900 border border-neutral-700 rounded-lg text-white text-sm focus:border-amber-500 focus:outline-none"
-                />
+        {/* ======================================================== */}
+        {/* WHITE MULTI-STEP CARD CONTAINER (SCREENS 2 TO 8) */}
+        {/* ======================================================== */}
+        {currentStep >= 1 && currentStep <= 6 && (
+          <div className="bg-white rounded-2xl shadow-2xl border border-neutral-200/80 overflow-hidden">
+            {/* Top Header Bar */}
+            <div className="px-5 sm:px-6 py-3 bg-white border-b border-neutral-200 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="font-outfit font-black text-base sm:text-lg text-neutral-900 tracking-wide">
+                  MADPROTEK
+                </span>
+                <span className="text-xs text-neutral-500 font-sans">Adventure Trail 2026</span>
               </div>
-
-              <div>
-                <label className="block text-[11px] font-mono text-neutral-300 uppercase mb-1">Registration Number *</label>
-                <input
-                  type="text"
-                  placeholder="TN 10 AB 1234"
-                  value={vehicle.regNumber}
-                  onChange={(e) => setVehicle({ ...vehicle, regNumber: e.target.value.toUpperCase() })}
-                  className="w-full px-4 py-3 bg-neutral-900 border border-neutral-700 rounded-lg text-white text-sm font-mono uppercase focus:border-amber-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-mono text-neutral-300 uppercase mb-1">Make *</label>
-                <select
-                  value={vehicle.make}
-                  onChange={(e) => setVehicle({ ...vehicle, make: e.target.value })}
-                  className="w-full px-4 py-3 bg-neutral-900 border border-neutral-700 rounded-lg text-white text-sm focus:border-amber-500 focus:outline-none"
-                >
-                  <option>Mahindra</option>
-                  <option>Maruti Suzuki</option>
-                  <option>Toyota</option>
-                  <option>Jeep</option>
-                  <option>Isuzu</option>
-                  <option>Force Motors</option>
-                  <option>Land Rover</option>
-                  <option>Other</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-mono text-neutral-300 uppercase mb-1">Model *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Thar / Gypsy / Gurkha / Hilux / Jimny"
-                  value={vehicle.model}
-                  onChange={(e) => setVehicle({ ...vehicle, model: e.target.value })}
-                  className="w-full px-4 py-3 bg-neutral-900 border border-neutral-700 rounded-lg text-white text-sm focus:border-amber-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-mono text-neutral-300 uppercase mb-1">Manufacturing Year *</label>
-                <select
-                  value={vehicle.year}
-                  onChange={(e) => setVehicle({ ...vehicle, year: e.target.value })}
-                  className="w-full px-4 py-3 bg-neutral-900 border border-neutral-700 rounded-lg text-white text-sm focus:border-amber-500 focus:outline-none"
-                >
-                  {["2025", "2024", "2023", "2022", "2021", "2020", "2018", "2015", "Older"].map((y) => (
-                    <option key={y}>{y}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-mono text-neutral-300 uppercase mb-1">Colour *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Black / Red / Desert Sand / White"
-                  value={vehicle.colour}
-                  onChange={(e) => setVehicle({ ...vehicle, colour: e.target.value })}
-                  className="w-full px-4 py-3 bg-neutral-900 border border-neutral-700 rounded-lg text-white text-sm focus:border-amber-500 focus:outline-none"
-                />
+              <div className="flex items-center space-x-1.5 text-xs text-neutral-500 font-sans">
+                <Shield className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Secure Registration</span>
               </div>
             </div>
 
-            {/* Vehicle Specifications */}
-            <div className="grid grid-cols-3 gap-3 p-4 bg-neutral-900/60 rounded-xl border border-neutral-800">
-              <div>
-                <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Fuel Type</label>
-                <select
-                  value={vehicle.fuelType}
-                  onChange={(e) => setVehicle({ ...vehicle, fuelType: e.target.value })}
-                  className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-xs text-white"
-                >
-                  <option>Diesel</option>
-                  <option>Petrol</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Transmission</label>
-                <select
-                  value={vehicle.transmission}
-                  onChange={(e) => setVehicle({ ...vehicle, transmission: e.target.value })}
-                  className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-xs text-white"
-                >
-                  <option>Manual</option>
-                  <option>Automatic</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Drivetrain</label>
-                <select
-                  value={vehicle.drivetrain}
-                  onChange={(e) => setVehicle({ ...vehicle, drivetrain: e.target.value })}
-                  className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-xs text-white"
-                >
-                  <option>4x4 with Low-Range</option>
-                  <option>AWD</option>
-                </select>
-              </div>
-            </div>
+            {/* Stepper Bar */}
+            <div className="px-4 sm:px-6 py-2.5 sm:py-3 bg-neutral-50/70 border-b border-neutral-200">
+              <div className="flex items-center justify-between relative max-w-4xl mx-auto">
+                <div className="absolute top-4 left-6 right-6 h-0.5 bg-neutral-200 -z-0" />
 
-            {/* Modified or Stock Toggle */}
-            <div className="pt-4 border-t border-neutral-700/80">
-              <label className="block text-xs font-mono text-neutral-300 uppercase mb-2 font-bold">
-                Is your vehicle modified?
-              </label>
-              <div className="flex items-center space-x-6">
-                <label className="flex items-center space-x-2 cursor-pointer text-sm">
-                  <input
-                    type="radio"
-                    name="modified"
-                    checked={!vehicle.isModified}
-                    onChange={() => setVehicle({ ...vehicle, isModified: false })}
-                    className="text-amber-500 focus:ring-amber-500"
-                  />
-                  <span>Stock / Factory Condition</span>
-                </label>
-                <label className="flex items-center space-x-2 cursor-pointer text-sm">
-                  <input
-                    type="radio"
-                    name="modified"
-                    checked={vehicle.isModified}
-                    onChange={() => setVehicle({ ...vehicle, isModified: true })}
-                    className="text-amber-500 focus:ring-amber-500"
-                  />
-                  <span className="font-bold text-amber-400">Modified Machine</span>
-                </label>
-              </div>
-            </div>
+                {stepsList.map((step) => {
+                  const isActive = displayStepNum === step.num;
+                  const isDone = displayStepNum > step.num;
 
-            {/* Modification Details Sub-Panel */}
-            {vehicle.isModified && (
-              <div className="p-5 bg-neutral-900/90 border border-amber-900/40 rounded-xl space-y-4">
-                <div className="text-xs font-mono text-amber-400 font-bold uppercase tracking-wider">
-                  TECHNICAL MODIFICATION PARTICULARS
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Suspension</label>
-                    <input
-                      type="text"
-                      placeholder='e.g. 2" Lift / Ironman / Old Man Emu'
-                      value={modifications.suspension}
-                      onChange={(e) => setModifications({ ...modifications, suspension: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Tyre Spec</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 285/70 R17 (33 Inch MT)"
-                      value={modifications.tyreSize}
-                      onChange={(e) => setModifications({ ...modifications, tyreSize: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Differential / Lockers</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Rear Eaton MLD / Air Locker"
-                      value={modifications.differential}
-                      onChange={(e) => setModifications({ ...modifications, differential: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Winch Capacity</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 9,500 lbs Warn / Runva"
-                      value={modifications.winch}
-                      onChange={(e) => setModifications({ ...modifications, winch: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Snorkel & Breathers</label>
-                    <input
-                      type="text"
-                      placeholder="Raised Snorkel + Differential breathers"
-                      value={modifications.snorkel}
-                      onChange={(e) => setModifications({ ...modifications, snorkel: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Recovery Points</label>
-                    <input
-                      type="text"
-                      placeholder="Dual Chassis-Mounted Rated Points"
-                      value={modifications.recoveryPoints}
-                      onChange={(e) => setModifications({ ...modifications, recoveryPoints: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-xs text-white"
-                    />
-                  </div>
-                </div>
-
-                {/* Upload Photos simulation */}
-                <div className="pt-2">
-                  <div className="text-[10px] font-mono text-neutral-400 uppercase mb-2">VEHICLE SCRUTINEERING PHOTOS:</div>
-                  <div className="grid grid-cols-3 gap-3">
-                    {["Front View", "Rear View", "Side View"].map((label) => (
+                  return (
+                    <div key={step.num} className="flex flex-col items-center relative z-10">
                       <div
-                        key={label}
-                        className="border border-dashed border-neutral-700 rounded-lg p-3 text-center bg-neutral-800/40 hover:border-amber-500 cursor-pointer transition-colors"
+                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-sans font-bold text-xs transition-all ${
+                          isActive
+                            ? "bg-neutral-900 text-white ring-4 ring-neutral-900/10"
+                            : isDone
+                            ? "bg-emerald-700 text-white"
+                            : "bg-white text-neutral-400 border-2 border-neutral-300"
+                        }`}
                       >
-                        <Upload className="w-4 h-4 mx-auto text-amber-500 mb-1" />
-                        <span className="text-[10px] font-mono block text-neutral-300">{label}</span>
-                        <span className="text-[9px] text-emerald-400 font-mono">Ready to Scrutineer</span>
+                        {isDone ? <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5]" /> : step.num}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                      <span
+                        className={`text-[10px] sm:text-[11px] mt-1 font-medium transition-colors hidden sm:block ${
+                          isActive ? "text-neutral-900 font-bold" : isDone ? "text-emerald-700" : "text-neutral-400"
+                        }`}
+                      >
+                        {step.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Error Message Header Banner */}
+            {errorMessage && (
+              <div className="mx-4 sm:mx-6 mt-4 p-3 bg-red-50 border border-red-300 rounded-lg text-red-700 text-xs font-sans flex items-center space-x-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 text-red-600" />
+                <span>{errorMessage}</span>
               </div>
             )}
 
-            {/* Stepper Buttons */}
-            <div className="flex items-center justify-between pt-6 border-t border-neutral-700/80">
-              <button
-                type="button"
-                onClick={() => setCurrentStep(2)}
-                className="px-6 py-3 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-mono text-xs uppercase tracking-wider rounded-lg flex items-center space-x-2"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Back</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!vehicle.regNumber) {
-                    setErrorMessage("Please enter Vehicle Registration Number.");
-                    return;
-                  }
-                  setErrorMessage("");
-                  setCurrentStep(4);
-                }}
-                className="px-8 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-outfit font-black text-sm uppercase tracking-wider rounded-lg flex items-center space-x-2"
-              >
-                <span>Save & Continue</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
+            {/* Form Steps Body */}
+            <div className="p-4 sm:p-6 lg:p-7">
+              {/* ======================================================== */}
+              {/* SCREEN 2: STEP 1 - EXPERIENCE DETAILS & INCLUSIONS */}
+              {/* ======================================================== */}
+              {currentStep === 1 && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                    {/* Left Col: Experience & Tiers (span 7) */}
+                    <div className="lg:col-span-7 flex flex-col justify-between space-y-4">
+                      <div className="border border-neutral-200 rounded-xl p-4 sm:p-5 bg-white shadow-sm flex-1 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
+                            <div>
+                              <span className="inline-block bg-[#f05a28] text-white text-[10px] font-bold px-2 py-0.5 rounded font-mono">
+                                {selectedExperience.includes("OWN 4X4") ? "DAY 1" : "DAY 2"}
+                              </span>
+                              <h2 className="font-outfit font-black text-xl text-neutral-900 mt-1 uppercase">
+                                {selectedExperience}
+                              </h2>
+                              <p className="text-xs text-neutral-500 font-sans">{selectedDate}</p>
+                            </div>
 
-        {/* ================= STEP 4: VEHICLE DOCUMENTS ================= */}
-        {currentStep === 4 && (
-          <div className="space-y-6 animate-fadeIn bg-neutral-800/50 border border-neutral-700/80 rounded-2xl p-6 sm:p-8">
-            <div>
-              <h2 className="font-outfit text-2xl font-black uppercase text-white flex items-center space-x-2">
-                <FileCheck className="w-6 h-6 text-amber-500" />
-                <span>Vehicle Documents</span>
-              </h2>
-              <p className="text-xs font-mono text-neutral-400 uppercase tracking-wider">
-                Upload clear and valid documents for marshal verification
-              </p>
-            </div>
+                            <div className="w-24 h-12 rounded-lg overflow-hidden border border-neutral-200 bg-neutral-100 flex-shrink-0 flex items-center justify-center">
+                              <img
+                                src="/M-word-logo.png"
+                                alt="MadProTek"
+                                className="w-full h-full object-contain p-1.5"
+                              />
+                            </div>
+                          </div>
 
-            <div className="space-y-4">
-              {/* RC */}
-              <div className="p-4 bg-neutral-900 border border-neutral-800 rounded-xl flex items-center justify-between">
-                <div className="space-y-1">
-                  <div className="font-outfit text-base font-bold text-white uppercase">Registration Certificate (RC)</div>
-                  <div className="text-xs text-neutral-400 font-mono">JPG, PNG or PDF (Max 5MB)</div>
-                </div>
-                <div className="flex items-center space-x-2 text-xs font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-800/60 px-3 py-1.5 rounded">
-                  <Check className="w-4 h-4" />
-                  <span>RC Verified & Uploaded</span>
-                </div>
-              </div>
+                          {/* Pricing Tiers Selectable */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-4">
+                            {/* Early Bird */}
+                            <div
+                              onClick={() => setPricingTier("EARLY_BIRD")}
+                              className={`cursor-pointer rounded-xl border p-3.5 transition-all text-center ${
+                                pricingTier === "EARLY_BIRD"
+                                  ? "border-[#f05a28] bg-orange-50/40 ring-2 ring-[#f05a28]/20"
+                                  : "border-neutral-200 hover:border-neutral-300"
+                              }`}
+                            >
+                              <div className="font-outfit text-xl font-black text-neutral-900">
+                                ₹{pricingConfig.price_early_bird.toLocaleString()}
+                              </div>
+                              <div className="text-xs font-bold text-neutral-800 mt-0.5">Early Bird</div>
+                              <div className="text-[10px] text-neutral-500">First 10 Vehicles</div>
+                            </div>
 
-              {/* Insurance */}
-              <div className="p-4 bg-neutral-900 border border-neutral-800 rounded-xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="font-outfit text-base font-bold text-white uppercase">Insurance Certificate</div>
-                  <div className="text-xs font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-800/60 px-3 py-1 rounded flex items-center space-x-1">
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Insurance Uploaded</span>
+                            {/* Regular */}
+                            <div
+                              onClick={() => setPricingTier("REGULAR")}
+                              className={`cursor-pointer rounded-xl border p-3.5 transition-all text-center ${
+                                pricingTier === "REGULAR"
+                                  ? "border-[#f05a28] bg-orange-50/40 ring-2 ring-[#f05a28]/20"
+                                  : "border-neutral-200 hover:border-neutral-300"
+                              }`}
+                            >
+                              <div className="font-outfit text-xl font-black text-neutral-900">
+                                ₹{pricingConfig.price_regular.toLocaleString()}
+                              </div>
+                              <div className="text-xs font-bold text-neutral-800 mt-0.5">Regular</div>
+                              <div className="text-[10px] text-neutral-500">Next 10 Vehicles</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Additional Participant Counter */}
+                        <div className="p-3 rounded-xl border border-orange-200 bg-orange-50/50 flex items-center justify-between">
+                          <div className="flex items-center space-x-2.5">
+                            <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-[#f05a28]">
+                              <User className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="text-xs font-bold text-neutral-900">Additional Participant</div>
+                              <div className="text-[11px] text-[#f05a28] font-semibold">
+                                ₹{pricingConfig.price_additional_participant.toLocaleString()} / Person
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center space-x-2.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (additionalCount > 0) {
+                                  setAdditionalCount(additionalCount - 1);
+                                  if (passengers.length > 2) {
+                                    setPassengers(passengers.slice(0, -1));
+                                  }
+                                }
+                              }}
+                              className="w-7 h-7 rounded border border-neutral-300 bg-white text-neutral-700 font-bold hover:bg-neutral-100 flex items-center justify-center text-sm"
+                            >
+                              -
+                            </button>
+                            <span className="font-mono font-bold text-sm text-neutral-900 w-4 text-center">
+                              {additionalCount}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAdditionalCount(additionalCount + 1);
+                                handleAddPassenger();
+                              }}
+                              className="w-7 h-7 rounded border border-neutral-300 bg-white text-neutral-700 font-bold hover:bg-neutral-100 flex items-center justify-center text-sm"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Col: Inclusions & Guidelines (span 5) */}
+                    <div className="lg:col-span-5 flex flex-col justify-between space-y-3">
+                      <div className="bg-neutral-50/90 rounded-xl p-4 sm:p-5 border border-neutral-200 flex-1 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between mb-3 pb-2 border-b border-neutral-200/70">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-600">
+                              PACKAGE INCLUSIONS
+                            </span>
+                            <span className="text-[11px] font-mono text-[#f05a28] font-bold">ALL INCLUSIVE</span>
+                          </div>
+                          <ul className="text-xs text-neutral-700 space-y-2.5">
+                            <li className="flex items-center space-x-2.5">
+                              <Users className="w-4 h-4 text-[#f05a28] flex-shrink-0" />
+                              <span>1 Driver + 2 Crew/Family included</span>
+                            </li>
+                            <li className="flex items-center space-x-2.5">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                              <span>15+ Natural &amp; Technical Obstacles</span>
+                            </li>
+                            <li className="flex items-center space-x-2.5">
+                              <Sparkles className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                              <span>Morning &amp; Afternoon Meals + Refreshments</span>
+                            </li>
+                            <li className="flex items-center space-x-2.5">
+                              <Car className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                              <span>Professional Action Photography &amp; Video</span>
+                            </li>
+                            <li className="flex items-center space-x-2.5">
+                              <Shield className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                              <span>Official Participant Recognition Memento</span>
+                            </li>
+                          </ul>
+                        </div>
+
+                        <div className="mt-3 p-2.5 rounded-lg bg-white border border-neutral-200 flex items-center justify-between">
+                          <div className="flex items-center space-x-2 text-xs text-neutral-600">
+                            <Shield className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Medical &amp; Recovery Teams On-Site</span>
+                          </div>
+                          <span className="text-[10px] font-mono text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded">
+                            Active
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Company</label>
-                    <input
-                      type="text"
-                      value={documents.insuranceCompany}
-                      onChange={(e) => setDocuments({ ...documents, insuranceCompany: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Policy Number</label>
-                    <input
-                      type="text"
-                      value={documents.policyNumber}
-                      onChange={(e) => setDocuments({ ...documents, policyNumber: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Expiry Date</label>
-                    <input
-                      type="date"
-                      value={documents.insuranceExpiry}
-                      onChange={(e) => setDocuments({ ...documents, insuranceExpiry: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-xs text-white"
-                    />
-                  </div>
-                </div>
-              </div>
 
-              {/* PUC */}
-              <div className="p-4 bg-neutral-900 border border-neutral-800 rounded-xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="font-outfit text-base font-bold text-white uppercase">Pollution Under Control (PUC)</div>
-                  <div className="text-xs font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-800/60 px-3 py-1 rounded flex items-center space-x-1">
-                    <Check className="w-3.5 h-3.5" />
-                    <span>PUC Uploaded</span>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">PUC Number</label>
-                    <input
-                      type="text"
-                      value={documents.pucNumber}
-                      onChange={(e) => setDocuments({ ...documents, pucNumber: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Expiry Date</label>
-                    <input
-                      type="date"
-                      value={documents.pucExpiry}
-                      onChange={(e) => setDocuments({ ...documents, pucExpiry: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-xs text-white"
-                    />
-                  </div>
-                </div>
-              </div>
+                  {/* Bottom Action Row (Screen 2) */}
+                  <div className="flex items-center justify-between pt-4 border-t border-neutral-200">
+                    <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-neutral-900 text-white text-xs font-mono">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="font-bold">SLOTS AVAILABLE: {pricingConfig.max_slots} MAX</span>
+                    </div>
 
-              {/* Declarations */}
-              <div className="pt-3 space-y-2 text-xs text-neutral-300">
-                <label className="flex items-start space-x-2.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={documents.declarationAccurate}
-                    onChange={(e) => setDocuments({ ...documents, declarationAccurate: e.target.checked })}
-                    className="mt-0.5 text-amber-500 rounded"
-                  />
-                  <span>I confirm that the vehicle information and documents submitted are accurate and genuine.</span>
-                </label>
-                <label className="flex items-start space-x-2.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={documents.declarationRoadworthy}
-                    onChange={(e) => setDocuments({ ...documents, declarationRoadworthy: e.target.checked })}
-                    className="mt-0.5 text-amber-500 rounded"
-                  />
-                  <span>I confirm that the vehicle is legally registered, roadworthy, and fit for tough terrain conditions.</span>
-                </label>
-              </div>
-            </div>
-
-            {/* Stepper Buttons */}
-            <div className="flex items-center justify-between pt-6 border-t border-neutral-700/80">
-              <button
-                type="button"
-                onClick={() => setCurrentStep(3)}
-                className="px-6 py-3 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-mono text-xs uppercase tracking-wider rounded-lg flex items-center space-x-2"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Back</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!documents.declarationAccurate || !documents.declarationRoadworthy) {
-                    setErrorMessage("Please accept the vehicle safety declarations to proceed.");
-                    return;
-                  }
-                  setErrorMessage("");
-                  setCurrentStep(5);
-                }}
-                className="px-8 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-outfit font-black text-sm uppercase tracking-wider rounded-lg flex items-center space-x-2"
-              >
-                <span>Save & Continue</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ================= STEP 5: EXPERIENCE & SAFETY ================= */}
-        {currentStep === 5 && (
-          <div className="space-y-6 animate-fadeIn bg-neutral-800/50 border border-neutral-700/80 rounded-2xl p-6 sm:p-8">
-            <div>
-              <h2 className="font-outfit text-2xl font-black uppercase text-white flex items-center space-x-2">
-                <Shield className="w-6 h-6 text-amber-500" />
-                <span>Experience & Safety</span>
-              </h2>
-              <p className="text-xs font-mono text-neutral-400 uppercase tracking-wider">
-                Help us understand your off-road experience and vital health details for marshal safety
-              </p>
-            </div>
-
-            <div className="space-y-5">
-              {/* Experience Level */}
-              <div>
-                <label className="block text-xs font-mono text-neutral-300 uppercase mb-2">Off-road Experience Level *</label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {["Beginner", "Intermediate", "Experienced", "Advanced"].map((lvl) => (
                     <button
-                      key={lvl}
                       type="button"
-                      onClick={() => setSafety({ ...safety, experienceLevel: lvl })}
-                      className={`py-2.5 px-3 rounded-lg border text-xs font-mono uppercase tracking-wider ${
-                        safety.experienceLevel === lvl
-                          ? "bg-amber-600 border-amber-500 text-white font-bold"
-                          : "bg-neutral-900 border-neutral-700 text-neutral-400 hover:text-white"
-                      }`}
+                      onClick={() => {
+                        setErrorMessage("");
+                        setCurrentStep(2);
+                      }}
+                      className="bg-[#f05a28] hover:bg-[#d94a1d] text-white font-sans font-bold px-7 py-2.5 rounded-lg shadow-sm flex items-center space-x-2 transition-colors text-xs sm:text-sm"
                     >
-                      {lvl}
+                      <span>Continue</span>
+                      <ArrowRight className="w-4 h-4" />
                     </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Past Event experience */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-mono text-neutral-300 uppercase mb-1">
-                    Participated in off-road events before?
-                  </label>
-                  <div className="flex items-center space-x-4 pt-1">
-                    <label className="flex items-center space-x-2 cursor-pointer text-sm">
-                      <input
-                        type="radio"
-                        checked={safety.participatedBefore === "Yes"}
-                        onChange={() => setSafety({ ...safety, participatedBefore: "Yes" })}
-                        className="text-amber-500"
-                      />
-                      <span>Yes</span>
-                    </label>
-                    <label className="flex items-center space-x-2 cursor-pointer text-sm">
-                      <input
-                        type="radio"
-                        checked={safety.participatedBefore === "No"}
-                        onChange={() => setSafety({ ...safety, participatedBefore: "No" })}
-                        className="text-amber-500"
-                      />
-                      <span>No</span>
-                    </label>
                   </div>
                 </div>
+              )}
 
-                {safety.participatedBefore === "Yes" && (
-                  <div>
-                    <label className="block text-[11px] font-mono text-neutral-400 uppercase mb-1">If yes, how many?</label>
-                    <input
-                      type="number"
-                      placeholder="e.g. 3"
-                      value={safety.eventCount}
-                      onChange={(e) => setSafety({ ...safety, eventCount: e.target.value })}
-                      className="w-full px-4 py-2.5 bg-neutral-900 border border-neutral-700 rounded-lg text-white text-sm"
-                    />
-                  </div>
-                )}
-              </div>
+              {/* ======================================================== */}
+              {/* SCREEN 3: STEP 2 - DRIVER & CREW (HORIZONTAL 2-COL LAYOUT) */}
+              {/* ======================================================== */}
+              {currentStep === 2 && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                    {/* Left: Driver Details */}
+                    <div className="lg:col-span-6 space-y-3.5 p-4 sm:p-5 rounded-xl border border-neutral-200 bg-white shadow-sm">
+                      <div className="flex items-start space-x-3 pb-3 border-b border-neutral-200">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center flex-shrink-0">
+                          <User className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h3 className="font-outfit font-black text-base text-neutral-900">Lead Driver Details</h3>
+                          <p className="text-[11px] text-neutral-500">Primary driver steering the vehicle on trail</p>
+                        </div>
+                      </div>
 
-              {/* Terrain Experience chips */}
-              <div>
-                <label className="block text-xs font-mono text-neutral-300 uppercase mb-2">
-                  Terrain Experience (Select all you have driven):
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {["Rocky", "Mud", "Inclines", "Descents", "Technical", "Loose"].map((terr) => {
-                    const active = safety.terrains.includes(terr);
-                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="sm:col-span-2">
+                          <label className="block text-[11px] font-medium text-neutral-700 mb-1">
+                            Full Name <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={driver.fullName}
+                            onChange={(e) => setDriver({ ...driver, fullName: e.target.value })}
+                            placeholder="Enter full name"
+                            className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-xs text-neutral-900 focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-neutral-700 mb-1">
+                            Age <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            value={driver.age}
+                            onChange={(e) => setDriver({ ...driver, age: e.target.value })}
+                            placeholder="Age"
+                            className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-xs text-neutral-900 focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-neutral-700 mb-1">
+                            Gender <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={driver.gender}
+                            onChange={(e) => setDriver({ ...driver, gender: e.target.value })}
+                            className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-xs text-neutral-900 focus:outline-none focus:border-amber-500"
+                          >
+                            <option value="">Select gender</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-neutral-700 mb-1">
+                            Mobile Number <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={driver.mobile}
+                            onChange={(e) => setDriver({ ...driver, mobile: e.target.value })}
+                            placeholder="+91 XXXXX XXXXX"
+                            className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-xs text-neutral-900 focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-neutral-700 mb-1">
+                            City <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={driver.city}
+                            onChange={(e) => setDriver({ ...driver, city: e.target.value })}
+                            placeholder="Enter city"
+                            className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-xs text-neutral-900 focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <label className="block text-[11px] font-medium text-neutral-700 mb-1">
+                            ID Proof <span className="text-red-500">*</span>
+                          </label>
+                          <div className="flex space-x-2">
+                            <select
+                              value={driver.idProofType}
+                              onChange={(e) => setDriver({ ...driver, idProofType: e.target.value })}
+                              className="flex-1 px-3 py-2 bg-white border border-neutral-300 rounded-lg text-xs text-neutral-900 focus:outline-none focus:border-amber-500"
+                            >
+                              <option value="">Select ID proof</option>
+                              <option value="Aadhaar Card">Aadhaar Card</option>
+                              <option value="Driving Licence">Driving Licence</option>
+                              <option value="Passport">Passport</option>
+                              <option value="Voter ID">Voter ID</option>
+                            </select>
+                            <label className="cursor-pointer px-3 py-2 bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 rounded-lg text-xs font-medium text-neutral-700 flex items-center space-x-1 flex-shrink-0">
+                              <Upload className="w-3.5 h-3.5 text-neutral-500" />
+                              <span>{driver.idProofUrl ? "Uploaded" : "Upload ID"}</span>
+                              <input
+                                type="file"
+                                className="hidden"
+                                onChange={(e) => handleFileUpload(e, "driver_id")}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right: Passengers & Crew */}
+                    <div className="lg:col-span-6 space-y-3.5 p-4 sm:p-5 rounded-xl border border-neutral-200 bg-neutral-50/50">
+                      <div className="flex items-center justify-between pb-3 border-b border-neutral-200">
+                        <div className="flex items-start space-x-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-orange-100 text-[#f05a28] flex items-center justify-center flex-shrink-0">
+                            <Users className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h3 className="font-outfit font-black text-base text-neutral-900">Crew / Co-Passengers</h3>
+                            <p className="text-[11px] text-neutral-500">2 friends/family included in standard slot</p>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-mono font-bold bg-white border border-neutral-200 px-2 py-0.5 rounded text-neutral-700">
+                          {passengers.length} Crew
+                        </span>
+                      </div>
+
+                      <div className="space-y-2.5 max-h-[290px] overflow-y-auto pr-1">
+                        {passengers.map((passenger, idx) => (
+                          <div key={idx} className="p-3 rounded-lg border border-neutral-200 bg-white space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-1.5">
+                                <span className="w-5 h-5 rounded-full bg-neutral-100 text-[10px] font-bold flex items-center justify-center text-neutral-700">
+                                  {idx + 1}
+                                </span>
+                                <span className="text-xs font-bold text-neutral-800">
+                                  {idx === 0 ? "Co-Driver / Spotter" : `Passenger ${idx + 1}`}
+                                </span>
+                              </div>
+                              {idx >= 2 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemovePassenger(idx)}
+                                  className="text-red-600 hover:text-red-700 text-[11px] flex items-center space-x-1"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  <span>Remove</span>
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                              <div>
+                                <input
+                                  type="text"
+                                  value={passenger.name}
+                                  onChange={(e) => {
+                                    const next = [...passengers];
+                                    next[idx].name = e.target.value;
+                                    setPassengers(next);
+                                  }}
+                                  placeholder="Full Name"
+                                  className="w-full px-2.5 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs text-neutral-900"
+                                />
+                              </div>
+                              <div>
+                                <input
+                                  type="number"
+                                  value={passenger.age}
+                                  onChange={(e) => {
+                                    const next = [...passengers];
+                                    next[idx].age = e.target.value;
+                                    setPassengers(next);
+                                  }}
+                                  placeholder="Age"
+                                  className="w-full px-2.5 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs text-neutral-900"
+                                />
+                              </div>
+                              <div>
+                                <select
+                                  value={passenger.relationship}
+                                  onChange={(e) => {
+                                    const next = [...passengers];
+                                    next[idx].relationship = e.target.value;
+                                    setPassengers(next);
+                                  }}
+                                  className="w-full px-2 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs text-neutral-900"
+                                >
+                                  <option value="">Relation</option>
+                                  <option value="Family">Family</option>
+                                  <option value="Friend">Friend</option>
+                                  <option value="Co-Driver">Co-Driver</option>
+                                  <option value="Spotter">Spotter</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="cursor-pointer w-full py-1.5 px-2 bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 rounded text-[11px] text-neutral-700 flex items-center justify-center space-x-1 truncate">
+                                  <Upload className="w-3 h-3 flex-shrink-0" />
+                                  <span className="truncate">{passenger.idProofUrl ? "Done" : "Upload ID"}</span>
+                                  <input
+                                    type="file"
+                                    className="hidden"
+                                    onChange={(e) => handleFileUpload(e, `passenger_id_${idx}`)}
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
                       <button
-                        key={terr}
                         type="button"
-                        onClick={() => toggleTerrain(terr)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-mono uppercase tracking-wider border transition-colors ${
-                          active
-                            ? "bg-amber-600/30 border-amber-500 text-amber-300 font-bold"
-                            : "bg-neutral-900 border-neutral-700 text-neutral-400 hover:border-neutral-500"
-                        }`}
+                        onClick={() => handleAddPassenger()}
+                        className="w-full py-2 border border-dashed border-emerald-400 hover:border-emerald-600 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-800 rounded-lg font-sans font-bold text-xs flex items-center justify-center space-x-2 transition-all"
                       >
-                        {terr} {active && "✓"}
+                        <Plus className="w-3.5 h-3.5 text-emerald-700" />
+                        <span>
+                          Add Extra Participant (+₹{pricingConfig.price_additional_participant.toLocaleString()})
+                        </span>
                       </button>
-                    );
-                  })}
-                </div>
-              </div>
+                    </div>
+                  </div>
 
-              {/* Medical Information */}
-              <div className="pt-4 border-t border-neutral-700/80">
-                <div className="text-xs font-mono text-amber-400 font-bold uppercase tracking-wider mb-3">
-                  MEDICAL INFORMATION FOR EMERGENCY MARSHAL TEAM
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Blood Group *</label>
-                    <select
-                      value={safety.bloodGroup}
-                      onChange={(e) => setSafety({ ...safety, bloodGroup: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-xs text-white font-mono"
+                  {/* Back and Save & Continue Buttons */}
+                  <div className="flex items-center justify-between pt-4 border-t border-neutral-200">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setErrorMessage("");
+                        setCurrentStep(1);
+                      }}
+                      className="px-5 py-2.5 border border-neutral-300 hover:bg-neutral-50 text-neutral-700 rounded-lg font-sans text-xs font-semibold flex items-center space-x-1.5"
                     >
-                      {["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"].map((bg) => (
-                        <option key={bg}>{bg}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Known Allergies</label>
-                    <input
-                      type="text"
-                      placeholder="None or list"
-                      value={safety.allergies}
-                      onChange={(e) => setSafety({ ...safety, allergies: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Medical Conditions</label>
-                    <input
-                      type="text"
-                      placeholder="None or specify"
-                      value={safety.medicalConditions}
-                      onChange={(e) => setSafety({ ...safety, medicalConditions: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Current Medication</label>
-                    <input
-                      type="text"
-                      placeholder="None or list"
-                      value={safety.currentMedication}
-                      onChange={(e) => setSafety({ ...safety, currentMedication: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-xs text-white"
-                    />
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Back</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const err = validateStep2();
+                        if (err) {
+                          setErrorMessage(err);
+                          return;
+                        }
+                        setErrorMessage("");
+                        setCurrentStep(3);
+                      }}
+                      className="bg-[#14532d] hover:bg-[#052e16] text-white font-sans font-bold px-7 py-2.5 rounded-lg shadow-sm flex items-center space-x-2 transition-colors text-xs sm:text-sm"
+                    >
+                      <span>Save &amp; Continue</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-              </div>
-            </div>
+              )}
 
-            {/* Stepper Buttons */}
-            <div className="flex items-center justify-between pt-6 border-t border-neutral-700/80">
-              <button
-                type="button"
-                onClick={() => setCurrentStep(4)}
-                className="px-6 py-3 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-mono text-xs uppercase tracking-wider rounded-lg flex items-center space-x-2"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Back</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setCurrentStep(6)}
-                className="px-8 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-outfit font-black text-sm uppercase tracking-wider rounded-lg flex items-center space-x-2"
-              >
-                <span>Save & Continue</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+              {/* ======================================================== */}
+              {/* SCREEN 4: STEP 3 - VEHICLE DETAILS (HORIZONTAL 2-COL) */}
+              {/* ======================================================== */}
+              {currentStep === 3 && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                    {/* Left Col: Vehicle Machine Details (span 7) */}
+                    <div className="lg:col-span-7 space-y-3.5 p-4 sm:p-5 rounded-xl border border-neutral-200 bg-white shadow-sm">
+                      <div className="flex items-start space-x-3 pb-3 border-b border-neutral-200">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center flex-shrink-0">
+                          <Car className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h3 className="font-outfit font-black text-base text-neutral-900">Vehicle Identification</h3>
+                          <p className="text-[11px] text-neutral-500">Official RC registration information</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-medium text-neutral-700 mb-1">
+                            Owner Name <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={vehicle.ownerName}
+                            onChange={(e) => setVehicle({ ...vehicle, ownerName: e.target.value })}
+                            placeholder="Enter owner name"
+                            className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-xs text-neutral-900"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-neutral-700 mb-1">
+                            Registration Number <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={vehicle.regNumber}
+                            onChange={(e) => setVehicle({ ...vehicle, regNumber: e.target.value })}
+                            placeholder="TN XX XX XXXX"
+                            className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-xs text-neutral-900 uppercase font-mono"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-neutral-700 mb-1">
+                            Make <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={vehicle.make}
+                            onChange={(e) => setVehicle({ ...vehicle, make: e.target.value })}
+                            className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-xs text-neutral-900"
+                          >
+                            <option value="">Select make</option>
+                            <option value="Mahindra">Mahindra</option>
+                            <option value="Jeep">Jeep</option>
+                            <option value="Toyota">Toyota</option>
+                            <option value="Suzuki / Maruti">Suzuki / Maruti</option>
+                            <option value="Force Motors">Force Motors</option>
+                            <option value="Isuzu">Isuzu</option>
+                            <option value="Tata">Tata</option>
+                            <option value="Land Rover">Land Rover</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-neutral-700 mb-1">
+                            Model <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={vehicle.model}
+                            onChange={(e) => setVehicle({ ...vehicle, model: e.target.value })}
+                            placeholder="e.g. Thar, Gurkha, Jimny, Hilux"
+                            className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-xs text-neutral-900"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-neutral-700 mb-1">
+                            Manufacturing Year <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={vehicle.year}
+                            onChange={(e) => setVehicle({ ...vehicle, year: e.target.value })}
+                            className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-xs text-neutral-900"
+                          >
+                            <option value="">Select year</option>
+                            {["2026", "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016", "2015", "Earlier"].map((y) => (
+                              <option key={y} value={y}>{y}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-neutral-700 mb-1">
+                            Colour <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={vehicle.colour}
+                            onChange={(e) => setVehicle({ ...vehicle, colour: e.target.value })}
+                            placeholder="e.g. Black, Red, Desert Sand"
+                            className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-xs text-neutral-900"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Col: Specifications & Modifications Switch (span 5) */}
+                    <div className="lg:col-span-5 space-y-3.5 p-4 sm:p-5 rounded-xl border border-neutral-200 bg-neutral-50/50">
+                      <div className="flex items-start space-x-3 pb-3 border-b border-neutral-200">
+                        <div className="w-8 h-8 rounded-lg bg-orange-100 text-[#f05a28] flex items-center justify-center flex-shrink-0">
+                          <Sparkles className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h3 className="font-outfit font-black text-base text-neutral-900">Drivetrain &amp; Build</h3>
+                          <p className="text-[11px] text-neutral-500">Mechanical specs &amp; modifications status</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div>
+                          <span className="text-[10px] text-neutral-500 block mb-1 font-bold">FUEL *</span>
+                          <select
+                            value={vehicle.fuelType}
+                            onChange={(e) => setVehicle({ ...vehicle, fuelType: e.target.value })}
+                            className="w-full px-2.5 py-1.5 bg-white border border-neutral-300 rounded text-xs text-neutral-900"
+                          >
+                            <option value="">Select</option>
+                            <option value="Diesel">Diesel</option>
+                            <option value="Petrol">Petrol</option>
+                            <option value="Electric">Electric</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] text-neutral-500 block mb-1 font-bold">GEARBOX *</span>
+                          <select
+                            value={vehicle.transmission}
+                            onChange={(e) => setVehicle({ ...vehicle, transmission: e.target.value })}
+                            className="w-full px-2.5 py-1.5 bg-white border border-neutral-300 rounded text-xs text-neutral-900"
+                          >
+                            <option value="">Select</option>
+                            <option value="Manual">Manual</option>
+                            <option value="Automatic">Automatic</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] text-neutral-500 block mb-1 font-bold">DRIVETRAIN *</span>
+                          <select
+                            value={vehicle.drivetrain}
+                            onChange={(e) => setVehicle({ ...vehicle, drivetrain: e.target.value })}
+                            className="w-full px-2.5 py-1.5 bg-white border border-neutral-300 rounded text-xs text-neutral-900"
+                          >
+                            <option value="">Select</option>
+                            <option value="4x4">4x4</option>
+                            <option value="AWD">AWD</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Is Modified Switch Tiles */}
+                      <div className="pt-2">
+                        <label className="block text-[11px] font-bold text-neutral-800 mb-2">
+                          Is your vehicle modified? <span className="text-red-500">*</span>
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div
+                            onClick={() => setVehicle({ ...vehicle, isModified: false })}
+                            className={`cursor-pointer rounded-lg border p-3 text-center transition-all ${
+                              !vehicle.isModified
+                                ? "border-emerald-700 bg-emerald-50 text-emerald-900 font-bold ring-1 ring-emerald-700"
+                                : "border-neutral-200 hover:border-neutral-300 text-neutral-600 bg-white"
+                            }`}
+                          >
+                            <div className="text-xs">Stock Condition</div>
+                            <div className="text-[10px] text-neutral-500 mt-0.5">Factory Setup</div>
+                          </div>
+
+                          <div
+                            onClick={() => setVehicle({ ...vehicle, isModified: true })}
+                            className={`cursor-pointer rounded-lg border p-3 text-center transition-all ${
+                              vehicle.isModified
+                                ? "border-[#f05a28] bg-orange-50 text-[#f05a28] font-bold ring-1 ring-[#f05a28]"
+                                : "border-neutral-200 hover:border-neutral-300 text-neutral-600 bg-white"
+                            }`}
+                          >
+                            <div className="text-xs">Modified 4x4</div>
+                            <div className="text-[10px] text-neutral-500 mt-0.5">Lift, Tyres, Winch, etc.</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Back and Save & Continue Buttons */}
+                  <div className="flex items-center justify-between pt-4 border-t border-neutral-200">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setErrorMessage("");
+                        setCurrentStep(2);
+                      }}
+                      className="px-5 py-2.5 border border-neutral-300 hover:bg-neutral-50 text-neutral-700 rounded-lg font-sans text-xs font-semibold flex items-center space-x-1.5"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Back</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const err = validateStep3();
+                        if (err) {
+                          setErrorMessage(err);
+                          return;
+                        }
+                        setErrorMessage("");
+                        if (vehicle.isModified) {
+                          setCurrentStep(3.5);
+                        } else {
+                          setCurrentStep(4);
+                        }
+                      }}
+                      className="bg-[#14532d] hover:bg-[#052e16] text-white font-sans font-bold px-7 py-2.5 rounded-lg shadow-sm flex items-center space-x-2 transition-colors text-xs sm:text-sm"
+                    >
+                      <span>Save &amp; Continue</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ======================================================== */}
+              {/* SCREEN 5: STEP 3B - MODIFICATION DETAILS (HORIZONTAL) */}
+              {/* ======================================================== */}
+              {currentStep === 3.5 && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-2 border-b border-neutral-200">
+                    <div>
+                      <h3 className="font-outfit font-black text-base text-neutral-900">Modification Details</h3>
+                      <p className="text-[11px] text-neutral-500">Provide details on upgrades installed on your rig</p>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold bg-orange-100 text-[#f05a28] px-2 py-0.5 rounded">
+                      Step 3B
+                    </span>
+                  </div>
+
+                  {/* Mods Form Compact 3-Column Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-medium text-neutral-700 mb-1">Suspension</label>
+                      <select
+                        value={modifications.suspension}
+                        onChange={(e) => setModifications({ ...modifications, suspension: e.target.value })}
+                        className="w-full px-2.5 py-1.5 bg-white border border-neutral-300 rounded text-xs text-neutral-900"
+                      >
+                        <option value="">Select suspension</option>
+                        <option value="Stock">Stock</option>
+                        <option value="2&quot; Lift Kit">2&quot; Lift Kit</option>
+                        <option value="3&quot; Lift Kit">3&quot; Lift Kit</option>
+                        <option value="4&quot;+ Extreme Lift">4&quot;+ Extreme Lift</option>
+                        <option value="Old Man Emu Heavy Duty">Old Man Emu Heavy Duty</option>
+                        <option value="Profender Adjustable">Profender Adjustable</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-neutral-700 mb-1">Tyres Type</label>
+                      <select
+                        value={modifications.tyresType}
+                        onChange={(e) => setModifications({ ...modifications, tyresType: e.target.value })}
+                        className="w-full px-2.5 py-1.5 bg-white border border-neutral-300 rounded text-xs text-neutral-900"
+                      >
+                        <option value="">Select tyre type</option>
+                        <option value="AT (All-Terrain)">AT (All-Terrain)</option>
+                        <option value="MT (Mud-Terrain)">MT (Mud-Terrain)</option>
+                        <option value="Extreme Trepador / Simex">Extreme Trepador / Simex</option>
+                        <option value="Stock HT">Stock HT</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-neutral-700 mb-1">Tyre Size</label>
+                      <input
+                        type="text"
+                        value={modifications.tyreSize}
+                        onChange={(e) => setModifications({ ...modifications, tyreSize: e.target.value })}
+                        placeholder="e.g. 285/70 R17"
+                        className="w-full px-2.5 py-1.5 bg-white border border-neutral-300 rounded text-xs text-neutral-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-neutral-700 mb-1">Differential / Locker</label>
+                      <select
+                        value={modifications.differential}
+                        onChange={(e) => setModifications({ ...modifications, differential: e.target.value })}
+                        className="w-full px-2.5 py-1.5 bg-white border border-neutral-300 rounded text-xs text-neutral-900"
+                      >
+                        <option value="">Select locker type</option>
+                        <option value="Stock Open">Stock Open</option>
+                        <option value="Rear Mechanical Locker">Rear Mechanical Locker</option>
+                        <option value="Front &amp; Rear e-Lockers">Front &amp; Rear e-Lockers</option>
+                        <option value="Air Locker">Air Locker</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-neutral-700 mb-1">Winch</label>
+                      <select
+                        value={modifications.winch}
+                        onChange={(e) => setModifications({ ...modifications, winch: e.target.value })}
+                        className="w-full px-2.5 py-1.5 bg-white border border-neutral-300 rounded text-xs text-neutral-900"
+                      >
+                        <option value="">Select winch</option>
+                        <option value="None">None</option>
+                        <option value="Electric 9,500 lbs">Electric 9,500 lbs</option>
+                        <option value="Electric 12,000 lbs">Electric 12,000 lbs</option>
+                        <option value="Synthetic 13,500 lbs">Synthetic 13,500 lbs</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-neutral-700 mb-1">Recovery Points</label>
+                      <select
+                        value={modifications.recoveryPoints}
+                        onChange={(e) => setModifications({ ...modifications, recoveryPoints: e.target.value })}
+                        className="w-full px-2.5 py-1.5 bg-white border border-neutral-300 rounded text-xs text-neutral-900"
+                      >
+                        <option value="">Select points</option>
+                        <option value="Stock Points">Stock Points</option>
+                        <option value="Rated 4.75T Bow Shackles">Rated 4.75T Bow Shackles</option>
+                        <option value="Chassis Mounted Heavy Duty">Chassis Mounted Heavy Duty</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Vehicle Photos Uploads - Horizontal 3-Card Row */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-neutral-800 mb-2">Vehicle Photos (Clear angles)</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* Front View */}
+                      <label className="cursor-pointer border-2 border-dashed border-neutral-300 hover:border-neutral-400 rounded-xl p-3 flex flex-col items-center justify-center text-center bg-neutral-50/50 hover:bg-neutral-50 transition-colors">
+                        <span className="text-xs font-semibold text-neutral-700 mb-1">Front View</span>
+                        <div className="w-8 h-8 rounded-full bg-white border border-neutral-200 flex items-center justify-center mb-1 text-neutral-500">
+                          {modifications.photos.front ? (
+                            <Check className="w-4 h-4 text-emerald-600" />
+                          ) : (
+                            <Upload className="w-3.5 h-3.5" />
+                          )}
+                        </div>
+                        <span className="text-[10px] text-neutral-500">
+                          {modifications.photos.front ? "Photo Uploaded" : "Upload Front"}
+                        </span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={(e) => handleFileUpload(e, "photo_front")}
+                        />
+                      </label>
+
+                      {/* Rear View */}
+                      <label className="cursor-pointer border-2 border-dashed border-neutral-300 hover:border-neutral-400 rounded-xl p-3 flex flex-col items-center justify-center text-center bg-neutral-50/50 hover:bg-neutral-50 transition-colors">
+                        <span className="text-xs font-semibold text-neutral-700 mb-1">Rear View</span>
+                        <div className="w-8 h-8 rounded-full bg-white border border-neutral-200 flex items-center justify-center mb-1 text-neutral-500">
+                          {modifications.photos.rear ? (
+                            <Check className="w-4 h-4 text-emerald-600" />
+                          ) : (
+                            <Upload className="w-3.5 h-3.5" />
+                          )}
+                        </div>
+                        <span className="text-[10px] text-neutral-500">
+                          {modifications.photos.rear ? "Photo Uploaded" : "Upload Rear"}
+                        </span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={(e) => handleFileUpload(e, "photo_rear")}
+                        />
+                      </label>
+
+                      {/* Side View */}
+                      <label className="cursor-pointer border-2 border-dashed border-neutral-300 hover:border-neutral-400 rounded-xl p-3 flex flex-col items-center justify-center text-center bg-neutral-50/50 hover:bg-neutral-50 transition-colors">
+                        <span className="text-xs font-semibold text-neutral-700 mb-1">Side View</span>
+                        <div className="w-8 h-8 rounded-full bg-white border border-neutral-200 flex items-center justify-center mb-1 text-neutral-500">
+                          {modifications.photos.side ? (
+                            <Check className="w-4 h-4 text-emerald-600" />
+                          ) : (
+                            <Upload className="w-3.5 h-3.5" />
+                          )}
+                        </div>
+                        <span className="text-[10px] text-neutral-500">
+                          {modifications.photos.side ? "Photo Uploaded" : "Upload Side"}
+                        </span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={(e) => handleFileUpload(e, "photo_side")}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Back and Save & Continue Buttons */}
+                  <div className="flex items-center justify-between pt-4 border-t border-neutral-200">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setErrorMessage("");
+                        setCurrentStep(3);
+                      }}
+                      className="px-5 py-2.5 border border-neutral-300 hover:bg-neutral-50 text-neutral-700 rounded-lg font-sans text-xs font-semibold flex items-center space-x-1.5"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Back</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setErrorMessage("");
+                        setCurrentStep(4);
+                      }}
+                      className="bg-[#14532d] hover:bg-[#052e16] text-white font-sans font-bold px-7 py-2.5 rounded-lg shadow-sm flex items-center space-x-2 transition-colors text-xs sm:text-sm"
+                    >
+                      <span>Save &amp; Continue</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ======================================================== */}
+              {/* SCREEN 6: STEP 4 - VEHICLE DOCUMENTS (3-COL HORIZONTAL) */}
+              {/* ======================================================== */}
+              {currentStep === 4 && (
+                <div className="space-y-4">
+                  {/* Header */}
+                  <div className="flex items-center justify-between pb-2 border-b border-neutral-200">
+                    <div>
+                      <h3 className="font-outfit font-black text-base text-neutral-900">Vehicle Documents</h3>
+                      <p className="text-[11px] text-neutral-500">Provide required legal documents for scrutineering</p>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold bg-neutral-100 text-neutral-700 px-2 py-0.5 rounded">
+                      Step 4 of 6
+                    </span>
+                  </div>
+
+                  {/* 3-Column Horizontal Grid for RC, Insurance, PUC */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    {/* Card 1: Registration Certificate (RC) */}
+                    <div className="p-4 rounded-xl border border-neutral-200 bg-white shadow-sm flex flex-col justify-between space-y-3">
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-bold text-neutral-900">RC Book / Card</span>
+                          <span className="text-[10px] font-mono text-neutral-400">PDF / JPG</span>
+                        </div>
+                        <p className="text-[11px] text-neutral-500 mb-3">Vehicle registration certificate front/back.</p>
+                      </div>
+
+                      <label className="cursor-pointer border-2 border-dashed border-neutral-300 hover:border-neutral-400 rounded-xl p-4 flex flex-col items-center justify-center text-center bg-neutral-50/50 hover:bg-neutral-50 transition-colors">
+                        <div className="w-9 h-9 rounded-full bg-white border border-neutral-200 flex items-center justify-center mb-1.5 text-neutral-500">
+                          {documents.rcUploaded ? (
+                            <Check className="w-4 h-4 text-emerald-600" />
+                          ) : (
+                            <Upload className="w-4 h-4" />
+                          )}
+                        </div>
+                        <span className="text-xs font-bold text-neutral-800 truncate max-w-[180px]">
+                          {documents.rcUploaded ? documents.rcFileName : "Upload RC Document"}
+                        </span>
+                        <span className="text-[10px] text-neutral-400 mt-0.5">Up to 5MB</span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={(e) => handleFileUpload(e, "doc_rc")}
+                        />
+                      </label>
+                    </div>
+
+                    {/* Card 2: Insurance Certificate */}
+                    <div className="p-4 rounded-xl border border-neutral-200 bg-white shadow-sm flex flex-col justify-between space-y-3">
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-bold text-neutral-900">Insurance Certificate</span>
+                          <span className="text-[10px] font-mono text-emerald-700 font-bold">Mandatory</span>
+                        </div>
+                        <div className="space-y-2 mb-3">
+                          <input
+                            type="text"
+                            value={documents.insuranceCompany}
+                            onChange={(e) => setDocuments({ ...documents, insuranceCompany: e.target.value })}
+                            placeholder="Insurance Provider"
+                            className="w-full px-2.5 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs text-neutral-900"
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <input
+                              type="text"
+                              value={documents.policyNumber}
+                              onChange={(e) => setDocuments({ ...documents, policyNumber: e.target.value })}
+                              placeholder="Policy No."
+                              className="w-full px-2.5 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs text-neutral-900 font-mono"
+                            />
+                            <input
+                              type="text"
+                              value={documents.insuranceExpiry}
+                              onChange={(e) => setDocuments({ ...documents, insuranceExpiry: e.target.value })}
+                              placeholder="Expiry Date"
+                              className="w-full px-2.5 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs text-neutral-900"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <label className="cursor-pointer border-2 border-dashed border-neutral-300 hover:border-neutral-400 rounded-xl p-2.5 flex items-center justify-center space-x-2 bg-neutral-50/50 hover:bg-neutral-50 transition-colors">
+                        <Upload className="w-3.5 h-3.5 text-neutral-500" />
+                        <span className="text-xs font-semibold text-neutral-700 truncate max-w-[170px]">
+                          {documents.insuranceUploaded ? documents.insuranceFileName : "Upload Insurance"}
+                        </span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={(e) => handleFileUpload(e, "doc_insurance")}
+                        />
+                      </label>
+                    </div>
+
+                    {/* Card 3: Pollution Under Control (PUC) */}
+                    <div className="p-4 rounded-xl border border-neutral-200 bg-white shadow-sm flex flex-col justify-between space-y-3">
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-bold text-neutral-900">PUC Emission Certificate</span>
+                          <span className="text-[10px] font-mono text-neutral-500">Optional / Check-in</span>
+                        </div>
+                        <div className="space-y-2 mb-3">
+                          <input
+                            type="text"
+                            value={documents.pucNumber}
+                            onChange={(e) => setDocuments({ ...documents, pucNumber: e.target.value })}
+                            placeholder="PUC Number"
+                            className="w-full px-2.5 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs text-neutral-900 font-mono"
+                          />
+                          <input
+                            type="text"
+                            value={documents.pucExpiry}
+                            onChange={(e) => setDocuments({ ...documents, pucExpiry: e.target.value })}
+                            placeholder="Expiry Date (DD/MM/YYYY)"
+                            className="w-full px-2.5 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs text-neutral-900"
+                          />
+                        </div>
+                      </div>
+
+                      <label className="cursor-pointer border-2 border-dashed border-neutral-300 hover:border-neutral-400 rounded-xl p-2.5 flex items-center justify-center space-x-2 bg-neutral-50/50 hover:bg-neutral-50 transition-colors">
+                        <Upload className="w-3.5 h-3.5 text-neutral-500" />
+                        <span className="text-xs font-semibold text-neutral-700 truncate max-w-[170px]">
+                          {documents.pucUploaded ? documents.pucFileName : "Upload PUC"}
+                        </span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={(e) => handleFileUpload(e, "doc_puc")}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Declarations Checkboxes - Compact Row */}
+                  <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-neutral-700">
+                    <label className="flex items-start space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={documents.declarationAccurate}
+                        onChange={(e) => setDocuments({ ...documents, declarationAccurate: e.target.checked })}
+                        className="mt-0.5 rounded text-emerald-700 focus:ring-emerald-700"
+                      />
+                      <span className="text-[11px] leading-tight">Vehicle info and documents submitted are authentic.</span>
+                    </label>
+
+                    <label className="flex items-start space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={documents.declarationRoadworthy}
+                        onChange={(e) => setDocuments({ ...documents, declarationRoadworthy: e.target.checked })}
+                        className="mt-0.5 rounded text-emerald-700 focus:ring-emerald-700"
+                      />
+                      <span className="text-[11px] leading-tight">Vehicle is legally registered and mechanically roadworthy.</span>
+                    </label>
+                  </div>
+
+                  {/* Back and Save & Continue Buttons */}
+                  <div className="flex items-center justify-between pt-4 border-t border-neutral-200">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setErrorMessage("");
+                        setCurrentStep(vehicle.isModified ? 3.5 : 3);
+                      }}
+                      className="px-5 py-2.5 border border-neutral-300 hover:bg-neutral-50 text-neutral-700 rounded-lg font-sans text-xs font-semibold flex items-center space-x-1.5"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Back</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const err = validateStep4();
+                        if (err) {
+                          setErrorMessage(err);
+                          return;
+                        }
+                        setErrorMessage("");
+                        setCurrentStep(5);
+                      }}
+                      className="bg-[#14532d] hover:bg-[#052e16] text-white font-sans font-bold px-7 py-2.5 rounded-lg shadow-sm flex items-center space-x-2 transition-colors text-xs sm:text-sm"
+                    >
+                      <span>Save &amp; Continue</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ======================================================== */}
+              {/* SCREEN 7: STEP 5 - EXPERIENCE & SAFETY (HORIZONTAL 2-COL) */}
+              {/* ======================================================== */}
+              {currentStep === 5 && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                    {/* Left Col: Trail Experience (span 6) */}
+                    <div className="lg:col-span-6 space-y-3.5 p-4 sm:p-5 rounded-xl border border-neutral-200 bg-white shadow-sm">
+                      <div className="flex items-start space-x-3 pb-3 border-b border-neutral-200">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center flex-shrink-0">
+                          <Compass className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h3 className="font-outfit font-black text-base text-neutral-900">Off-Road Experience</h3>
+                          <p className="text-[11px] text-neutral-500">Helps marshals allocate suitable convoy batches</p>
+                        </div>
+                      </div>
+
+                      {/* Off-road Experience Level */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-neutral-800 mb-1.5">
+                          Experience Level <span className="text-red-500">*</span>
+                        </label>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {["Beginner", "Intermediate", "Experienced", "Advanced"].map((lvl) => (
+                            <div
+                              key={lvl}
+                              onClick={() => setSafety({ ...safety, experienceLevel: lvl })}
+                              className={`cursor-pointer rounded-lg border p-2 text-center text-xs font-medium transition-all ${
+                                safety.experienceLevel === lvl
+                                  ? "border-emerald-700 bg-emerald-50 text-emerald-900 font-bold ring-1 ring-emerald-700"
+                                  : "border-neutral-200 hover:border-neutral-300 text-neutral-700"
+                              }`}
+                            >
+                              {lvl}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Participated before? */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-neutral-800 mb-1.5">
+                          Participated in off-road events before?
+                        </label>
+                        <div className="flex items-center space-x-6 text-xs text-neutral-800 mb-2">
+                          <label className="flex items-center space-x-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="participatedBefore"
+                              checked={safety.participatedBefore === "Yes"}
+                              onChange={() => setSafety({ ...safety, participatedBefore: "Yes" })}
+                              className="text-emerald-700 focus:ring-emerald-700"
+                            />
+                            <span>Yes</span>
+                          </label>
+                          <label className="flex items-center space-x-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="participatedBefore"
+                              checked={safety.participatedBefore === "No"}
+                              onChange={() => setSafety({ ...safety, participatedBefore: "No" })}
+                              className="text-emerald-700 focus:ring-emerald-700"
+                            />
+                            <span>No</span>
+                          </label>
+                        </div>
+
+                        {safety.participatedBefore === "Yes" && (
+                          <div className="max-w-xs">
+                            <input
+                              type="number"
+                              value={safety.eventCount}
+                              onChange={(e) => setSafety({ ...safety, eventCount: e.target.value })}
+                              placeholder="Number of previous events"
+                              className="w-full px-2.5 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs text-neutral-900"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Terrain Experience */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-neutral-800 mb-1.5">
+                          Terrain Experience (Select all encountered)
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {["Rocky", "Mud", "Inclines", "Descents", "Technical", "Loose"].map((t) => {
+                            const isSelected = safety.terrains.includes(t);
+                            return (
+                              <div
+                                key={t}
+                                onClick={() => toggleTerrain(t)}
+                                className={`cursor-pointer rounded border p-2 text-center text-xs font-medium transition-all ${
+                                  isSelected
+                                    ? "border-emerald-700 bg-emerald-50 text-emerald-900 font-bold"
+                                    : "border-neutral-200 text-neutral-600 hover:border-neutral-300"
+                                }`}
+                              >
+                                {t}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Col: Medical Information (span 6) */}
+                    <div className="lg:col-span-6 space-y-3.5 p-4 sm:p-5 rounded-xl border border-neutral-200 bg-neutral-50/50">
+                      <div className="flex items-start space-x-3 pb-3 border-b border-neutral-200">
+                        <div className="w-8 h-8 rounded-lg bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0">
+                          <HeartPulse className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h3 className="font-outfit font-black text-base text-neutral-900">Medical &amp; Emergency</h3>
+                          <p className="text-[11px] text-neutral-500">Confidential medical details for trail medics</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-medium text-neutral-700 mb-1">Blood Group</label>
+                          <select
+                            value={safety.bloodGroup}
+                            onChange={(e) => setSafety({ ...safety, bloodGroup: e.target.value })}
+                            className="w-full px-2.5 py-1.5 bg-white border border-neutral-300 rounded text-xs text-neutral-900"
+                          >
+                            <option value="">Select Blood Group</option>
+                            {["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"].map((bg) => (
+                              <option key={bg} value={bg}>{bg}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-neutral-700 mb-1">Known Allergies</label>
+                          <input
+                            type="text"
+                            value={safety.allergies}
+                            onChange={(e) => setSafety({ ...safety, allergies: e.target.value })}
+                            placeholder="e.g. Penicillin, Dust, None"
+                            className="w-full px-2.5 py-1.5 bg-white border border-neutral-300 rounded text-xs text-neutral-900"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-neutral-700 mb-1">Medical Conditions</label>
+                          <input
+                            type="text"
+                            value={safety.medicalConditions}
+                            onChange={(e) => setSafety({ ...safety, medicalConditions: e.target.value })}
+                            placeholder="e.g. Asthma, BP, None"
+                            className="w-full px-2.5 py-1.5 bg-white border border-neutral-300 rounded text-xs text-neutral-900"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-neutral-700 mb-1">Current Medication</label>
+                          <input
+                            type="text"
+                            value={safety.currentMedication}
+                            onChange={(e) => setSafety({ ...safety, currentMedication: e.target.value })}
+                            placeholder="e.g. Inhaler, Tablets, None"
+                            className="w-full px-2.5 py-1.5 bg-white border border-neutral-300 rounded text-xs text-neutral-900"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-lg bg-white border border-neutral-200 text-[11px] text-neutral-600 space-y-1">
+                        <div className="font-bold text-neutral-800 flex items-center space-x-1.5">
+                          <Shield className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>On-Trail Medical Emergency Support</span>
+                        </div>
+                        <p className="text-neutral-500">
+                          Ambulance, first-aid marshals, and paramedic teams are stationed at Obstacle Points 1, 7, and 14 throughout the event.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Back and Save & Continue Buttons */}
+                  <div className="flex items-center justify-between pt-4 border-t border-neutral-200">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setErrorMessage("");
+                        setCurrentStep(4);
+                      }}
+                      className="px-5 py-2.5 border border-neutral-300 hover:bg-neutral-50 text-neutral-700 rounded-lg font-sans text-xs font-semibold flex items-center space-x-1.5"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Back</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!safety.experienceLevel) {
+                          setErrorMessage("Please select your off-road experience level.");
+                          return;
+                        }
+                        setErrorMessage("");
+                        setCurrentStep(6);
+                      }}
+                      className="bg-[#14532d] hover:bg-[#052e16] text-white font-sans font-bold px-7 py-2.5 rounded-lg shadow-sm flex items-center space-x-2 transition-colors text-xs sm:text-sm"
+                    >
+                      <span>Save &amp; Continue</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ======================================================== */}
+              {/* SCREEN 8: STEP 6 - REVIEW & PAYMENT (WITH GOOGLE CAPTCHA) */}
+              {/* ======================================================== */}
+              {currentStep === 6 && (
+                <div className="space-y-6">
+                  {/* Header */}
+                  <div>
+                    <h3 className="font-outfit font-black text-lg text-neutral-900">Review Your Registration</h3>
+                    <p className="text-xs text-neutral-500">Please review your details before payment</p>
+                  </div>
+
+                  {/* Review Cards Grid */}
+                  <div className="space-y-3">
+                    {/* Experience Review Card */}
+                    <div className="p-4 rounded-xl border border-neutral-200 bg-neutral-50/60 flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 rounded-lg bg-white border border-neutral-200 p-1 flex-shrink-0 flex items-center justify-center">
+                          <Car className="w-5 h-5 text-neutral-700" />
+                        </div>
+                        <div>
+                          <div className="font-outfit font-bold text-sm text-neutral-900">{selectedExperience}</div>
+                          <div className="text-[11px] text-neutral-500">
+                            {selectedDate} •{" "}
+                            {pricingTier === "EARLY_BIRD"
+                              ? `₹${pricingConfig.price_early_bird.toLocaleString()} Early Bird`
+                              : `₹${pricingConfig.price_regular.toLocaleString()} Regular`}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setCurrentStep(1)}
+                        className="text-xs font-semibold text-neutral-600 hover:text-neutral-900 underline"
+                      >
+                        Edit
+                      </button>
+                    </div>
+
+                    {/* Driver Review Card */}
+                    <div className="p-4 rounded-xl border border-neutral-200 bg-neutral-50/60 flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 rounded-lg bg-white border border-neutral-200 flex items-center justify-center flex-shrink-0">
+                          <User className="w-5 h-5 text-neutral-700" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs text-neutral-900">
+                            {driver.fullName || "Primary Driver"}
+                          </div>
+                          <div className="text-[11px] text-neutral-500 font-mono">
+                            {driver.mobile || "No phone entered"} {driver.city ? `• ${driver.city}` : ""}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setCurrentStep(2)}
+                        className="text-xs font-semibold text-neutral-600 hover:text-neutral-900 underline"
+                      >
+                        Edit
+                      </button>
+                    </div>
+
+                    {/* Vehicle Review Card */}
+                    <div className="p-4 rounded-xl border border-neutral-200 bg-neutral-50/60 flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 rounded-lg bg-white border border-neutral-200 flex items-center justify-center flex-shrink-0">
+                          <Car className="w-5 h-5 text-neutral-700" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs text-neutral-900">
+                            {vehicle.make ? `${vehicle.make} ${vehicle.model}` : vehicle.model || "Vehicle Specified"}
+                          </div>
+                          <div className="text-[11px] text-neutral-500 font-mono">
+                            {vehicle.regNumber || "REG PENDING"} {vehicle.fuelType ? `| ${vehicle.fuelType}` : ""}{" "}
+                            {vehicle.transmission ? `| ${vehicle.transmission}` : ""}{" "}
+                            | {vehicle.isModified ? "Modified" : "Stock"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setCurrentStep(3)}
+                        className="text-xs font-semibold text-neutral-600 hover:text-neutral-900 underline"
+                      >
+                        Edit
+                      </button>
+                    </div>
+
+                    {/* Crew Members Review Card */}
+                    <div className="p-4 rounded-xl border border-neutral-200 bg-neutral-50/60 flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 rounded-lg bg-white border border-neutral-200 flex items-center justify-center flex-shrink-0">
+                          <Users className="w-5 h-5 text-neutral-700" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs text-neutral-900">Crew Members</div>
+                          <div className="text-[11px] text-neutral-500">
+                            Driver: 1 | Passengers: {passengers.filter((p) => p.name.trim()).length} | Additional: {additionalCount}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setCurrentStep(2)}
+                        className="text-xs font-semibold text-neutral-600 hover:text-neutral-900 underline"
+                      >
+                        Edit
+                      </button>
+                    </div>
+
+                    {/* Documents Review Card */}
+                    <div className="p-4 rounded-xl border border-neutral-200 bg-neutral-50/60 flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 rounded-lg bg-white border border-neutral-200 flex items-center justify-center flex-shrink-0">
+                          <FileCheck className="w-5 h-5 text-neutral-700" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs text-neutral-900">Documents</div>
+                          <div className="text-[11px] text-emerald-700 font-medium">
+                            {documents.rcUploaded || documents.insuranceUploaded
+                              ? "Documents attached & declarations signed"
+                              : "Declarations signed on record"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setCurrentStep(4)}
+                        className="text-xs font-semibold text-neutral-600 hover:text-neutral-900 underline"
+                      >
+                        Edit
+                      </button>
+                    </div>
+
+                    {/* Safety & Medical Review Card */}
+                    <div className="p-4 rounded-xl border border-neutral-200 bg-neutral-50/60 flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 rounded-lg bg-white border border-neutral-200 flex items-center justify-center flex-shrink-0">
+                          <Shield className="w-5 h-5 text-neutral-700" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs text-neutral-900">Safety &amp; Medical</div>
+                          <div className="text-[11px] text-neutral-500">
+                            Level: {safety.experienceLevel || "Standard"}{" "}
+                            {safety.bloodGroup ? `| Blood: ${safety.bloodGroup}` : ""}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setCurrentStep(5)}
+                        className="text-xs font-semibold text-neutral-600 hover:text-neutral-900 underline"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Promo Code Entry Area */}
+                  <div className="p-4 rounded-xl border border-neutral-200 bg-white shadow-sm space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <Tag className="w-4 h-4 text-amber-600" />
+                      <span className="text-xs font-bold text-neutral-800 uppercase tracking-wider">
+                        HAVE A PROMO CODE?
+                      </span>
+                    </div>
+
+                    {appliedPromo ? (
+                      <div className="flex items-center justify-between p-3.5 bg-emerald-50 border border-emerald-300 rounded-lg">
+                        <div className="flex items-center space-x-2.5">
+                          <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                          <div>
+                            <span className="font-mono font-bold text-xs text-emerald-900 bg-white px-2 py-0.5 rounded border border-emerald-200">
+                              {appliedPromo.code}
+                            </span>
+                            <span className="text-xs text-emerald-800 font-semibold ml-2">
+                              -₹{appliedPromo.discount.toLocaleString()} OFF
+                            </span>
+                            {appliedPromo.description && (
+                              <span className="text-[10px] text-emerald-700 block mt-0.5">
+                                {appliedPromo.description}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleRemovePromo}
+                          className="text-xs font-semibold text-red-600 hover:text-red-800 underline ml-2"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <div className="flex space-x-2">
+                          <input
+                            type="text"
+                            value={promoInput}
+                            onChange={(e) => {
+                              setPromoInput(e.target.value.toUpperCase());
+                              setPromoError("");
+                              setPromoSuccess("");
+                            }}
+                            placeholder="Enter promo code (e.g. MAD500)"
+                            className="flex-1 px-3.5 py-2.5 bg-neutral-50 border border-neutral-300 rounded-lg text-xs font-mono font-bold text-neutral-900 uppercase focus:outline-none focus:border-amber-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleApplyPromo}
+                            disabled={isValidatingPromo || !promoInput.trim()}
+                            className="px-6 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg text-xs font-sans font-bold uppercase transition-all disabled:opacity-50 flex items-center space-x-1.5"
+                          >
+                            {isValidatingPromo ? (
+                              <>
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                <span>Checking...</span>
+                              </>
+                            ) : (
+                              <span>Apply</span>
+                            )}
+                          </button>
+                        </div>
+                        {promoError && (
+                          <p className="text-xs text-red-600 font-medium">{promoError}</p>
+                        )}
+                        {promoSuccess && (
+                          <p className="text-xs text-emerald-700 font-medium">{promoSuccess}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Payment Summary */}
+                  <div className="p-4 rounded-xl border border-neutral-200 bg-neutral-50 space-y-2">
+                    <div className="text-xs font-bold text-neutral-800 uppercase tracking-wider mb-1">
+                      Payment Summary
+                    </div>
+                    <div className="flex justify-between text-xs text-neutral-700">
+                      <span>{selectedExperience} ({pricingTier === "EARLY_BIRD" ? "Early Bird" : "Regular"})</span>
+                      <span className="font-mono">
+                        ₹{pricingTier === "EARLY_BIRD"
+                          ? pricingConfig.price_early_bird.toLocaleString()
+                          : pricingConfig.price_regular.toLocaleString()}
+                      </span>
+                    </div>
+
+                    {additionalCount > 0 && (
+                      <div className="flex justify-between text-xs text-neutral-700">
+                        <span>Additional Participant x {additionalCount}</span>
+                        <span className="font-mono">
+                          ₹{(additionalCount * pricingConfig.price_additional_participant).toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+
+                    {appliedPromo && (
+                      <div className="flex justify-between text-xs text-emerald-700 font-medium">
+                        <span>Promo Code Discount ({appliedPromo.code})</span>
+                        <span className="font-mono font-bold">-₹{appliedPromo.discount.toLocaleString()}</span>
+                      </div>
+                    )}
+
+                    <div className="pt-2 border-t border-neutral-200 flex justify-between items-center">
+                      <span className="font-bold text-sm text-neutral-900">Total Amount</span>
+                      <span className="font-outfit font-black text-xl text-[#f05a28]">
+                        ₹{calculateTotal().toLocaleString()}
+                      </span>
+                    </div>
+
+                    {/* Cashfree PG Trust & Security Banner */}
+                    <div className="mt-2 pt-2 border-t border-neutral-200/60 flex flex-wrap items-center justify-between text-[11px] text-neutral-500">
+                      <div className="flex items-center space-x-1.5 text-neutral-700 font-medium">
+                        <Lock className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Cashfree 256-bit Encrypted Checkout</span>
+                      </div>
+                      <div className="flex items-center space-x-2 text-[10px] font-mono font-semibold text-neutral-600 mt-1 sm:mt-0">
+                        <span className="bg-white px-1.5 py-0.5 rounded border border-neutral-200">UPI / QR</span>
+                        <span className="bg-white px-1.5 py-0.5 rounded border border-neutral-200">CARDS</span>
+                        <span className="bg-white px-1.5 py-0.5 rounded border border-neutral-200">NETBANKING</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Google reCAPTCHA Verification Widget */}
+                  <div className="pt-2">
+                    <label className="block text-xs font-bold text-neutral-800 mb-2">
+                      Security Verification <span className="text-red-500">*</span>
+                    </label>
+                    <GoogleCaptcha
+                      onVerify={(token) => {
+                        setCaptchaToken(token);
+                        setCaptchaError("");
+                      }}
+                      onExpire={() => setCaptchaToken("")}
+                      error={captchaError}
+                    />
+                    {captchaError && (
+                      <p className="text-xs text-red-600 mt-1.5 font-medium">{captchaError}</p>
+                    )}
+                  </div>
+
+                  {/* Back and Proceed to Payment Buttons */}
+                  <div className="flex items-center justify-between pt-6 border-t border-neutral-200">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setErrorMessage("");
+                        setCurrentStep(5);
+                      }}
+                      className="px-6 py-2.5 border border-neutral-300 hover:bg-neutral-50 text-neutral-700 rounded-lg font-sans text-xs font-semibold flex items-center space-x-1.5"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Back</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={handleFinalSubmit}
+                      className="bg-[#f05a28] hover:bg-[#d94a1d] text-white font-sans font-bold px-8 py-3 rounded-lg shadow-sm flex items-center space-x-2 transition-colors text-sm disabled:opacity-60"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Connecting to Cashfree...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CreditCard className="w-4 h-4" />
+                          <span>Pay ₹{calculateTotal().toLocaleString()} via Cashfree</span>
+                          <ArrowRight className="w-4 h-4 ml-1" />
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {/* ================= STEP 6: REVIEW & PAYMENT ================= */}
-        {currentStep === 6 && (
-          <div className="space-y-6 animate-fadeIn bg-neutral-800/50 border border-neutral-700/80 rounded-2xl p-6 sm:p-8">
-            <div>
-              <h2 className="font-outfit text-2xl font-black uppercase text-white flex items-center space-x-2">
-                <CreditCard className="w-6 h-6 text-amber-500" />
-                <span>Review Your Registration</span>
-              </h2>
-              <p className="text-xs font-mono text-neutral-400 uppercase tracking-wider">
-                Please review your details carefully before proceeding to slot allocation
-              </p>
+        {/* ======================================================== */}
+        {/* SCREEN 9: STEP 7 - REGISTRATION CONFIRMED */}
+        {/* ======================================================== */}
+        {currentStep === 7 && (
+          <div className="relative rounded-2xl overflow-hidden border border-neutral-800 shadow-2xl bg-neutral-950 text-white p-6 sm:p-10 text-center animate-fadeIn">
+            {/* Logo */}
+            <div className="flex items-center justify-center space-x-2 mb-6">
+              <img src="/M-word-logo.png" alt="MadProTek" className="h-7 w-auto object-contain" />
+              <span className="font-outfit font-black tracking-wider text-lg text-white">MADPROTEK</span>
             </div>
 
-            <div className="space-y-3">
-              {/* Experience Summary */}
-              <div className="p-4 bg-neutral-900/90 border border-neutral-800 rounded-xl flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-mono text-amber-500 font-bold uppercase block">EXPERIENCE</span>
-                  <div className="font-outfit text-lg font-bold text-white uppercase">{selectedExperience}</div>
-                  <div className="text-xs text-neutral-400 font-mono">{selectedDate} • {pricingTier}</div>
+            {/* Checkmark Circle */}
+            <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-500 text-emerald-400 flex items-center justify-center mx-auto mb-4">
+              <Check className="w-8 h-8 stroke-[3]" />
+            </div>
+
+            <h2 className="font-outfit text-3xl font-black uppercase text-white tracking-tight">
+              Registration Confirmed!
+            </h2>
+            <div className="inline-flex items-center space-x-2 px-3 py-1 bg-emerald-950/80 border border-emerald-500/50 rounded-full text-emerald-400 text-xs font-mono font-bold mt-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>PAYMENT CAPTURED • SLOT SECURED</span>
+            </div>
+            <p className="text-neutral-400 text-xs font-sans mt-2">You&apos;re on the Trail for MadProTek Adventure 2026!</p>
+
+            {/* Badge Details Box */}
+            <div className="my-6 max-w-md mx-auto p-5 bg-neutral-900 border border-neutral-800 rounded-xl text-left space-y-3 font-mono text-xs">
+              <div className="text-center pb-2 border-b border-neutral-800">
+                <span className="text-[10px] text-neutral-400 uppercase block">Registration ID</span>
+                <span className="font-outfit font-black text-2xl text-amber-500 tracking-wider">
+                  {confirmedData?.registration_code || "MAT26-0001"}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-neutral-400">Driver Name:</span>
+                <span className="text-white font-bold">{confirmedData?.driver_name}</span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-neutral-400">Experience:</span>
+                <span className="text-white font-bold">{confirmedData?.experience_type}</span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-neutral-400">Date:</span>
+                <span className="text-white font-bold">{confirmedData?.date}</span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-neutral-400">Venue:</span>
+                <span className="text-white font-bold text-right">Urigam Village, Anchetty</span>
+              </div>
+
+              {/* Cashfree Payment Audit Trail */}
+              <div className="p-2.5 bg-neutral-950/80 rounded border border-emerald-900/60 space-y-1">
+                <div className="flex justify-between text-emerald-400 text-[11px] font-bold">
+                  <span>Cashfree Transaction ID:</span>
+                  <span className="font-mono">{confirmedData?.payment_id || "CF_CAPTURED"}</span>
                 </div>
-                <div className="flex items-center space-x-4">
-                  <span className="font-outfit text-xl font-black text-amber-400">
-                    ₹{selectedExperience === "OWN 4X4 EXPERIENCE" ? (pricingTier === "EARLY_BIRD" ? "5,999" : "6,999") : "1,999"}
+                {confirmedData?.payment_method && (
+                  <div className="flex justify-between text-neutral-300 text-[10px]">
+                    <span className="text-neutral-400">Payment Mode:</span>
+                    <span>{confirmedData.payment_method}</span>
+                  </div>
+                )}
+                {confirmedData?.order_id && (
+                  <div className="flex justify-between text-neutral-400 text-[10px]">
+                    <span>Cashfree Order ID:</span>
+                    <span>{confirmedData.order_id}</span>
+                  </div>
+                )}
+              </div>
+
+              {confirmedData?.promo_code && (
+                <div className="flex justify-between text-emerald-400">
+                  <span>Promo Code:</span>
+                  <span className="font-bold">
+                    {confirmedData.promo_code} (-₹{confirmedData.discount_amount?.toLocaleString()})
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentStep(1)}
-                    className="text-xs text-amber-400 hover:underline font-mono"
-                  >
-                    Edit
-                  </button>
                 </div>
-              </div>
+              )}
 
-              {/* Driver Summary */}
-              <div className="p-4 bg-neutral-900/90 border border-neutral-800 rounded-xl flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-mono text-amber-500 font-bold uppercase block">PRIMARY DRIVER</span>
-                  <div className="font-outfit text-base font-bold text-white">{driver.fullName || "Manikandan S"}</div>
-                  <div className="text-xs text-neutral-400 font-mono">{driver.mobile || "+91 98765 43210"} • {driver.email || "driver@example.com"}</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCurrentStep(2)}
-                  className="text-xs text-amber-400 hover:underline font-mono"
-                >
-                  Edit
-                </button>
-              </div>
-
-              {/* Vehicle Summary */}
-              <div className="p-4 bg-neutral-900/90 border border-neutral-800 rounded-xl flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-mono text-amber-500 font-bold uppercase block">VEHICLE MACHINE</span>
-                  <div className="font-outfit text-base font-bold text-white">{vehicle.make} {vehicle.model}</div>
-                  <div className="text-xs text-neutral-400 font-mono">
-                    {vehicle.regNumber || "TN 10 AB 1234"} • {vehicle.fuelType} • {vehicle.transmission} • {vehicle.drivetrain}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCurrentStep(3)}
-                  className="text-xs text-amber-400 hover:underline font-mono"
-                >
-                  Edit
-                </button>
-              </div>
-
-              {/* Crew Summary */}
-              <div className="p-4 bg-neutral-900/90 border border-neutral-800 rounded-xl flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-mono text-amber-500 font-bold uppercase block">CREW MEMBERS</span>
-                  <div className="text-xs text-neutral-300 font-sans">
-                    Driver: 1 | Passengers: {passengers.length} | Additional Participants: {additionalCount}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCurrentStep(2)}
-                  className="text-xs text-amber-400 hover:underline font-mono"
-                >
-                  Edit
-                </button>
-              </div>
-
-              {/* Documents & Safety */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3 bg-neutral-900/90 border border-neutral-800 rounded-xl flex items-center justify-between">
-                  <div className="text-xs">
-                    <span className="text-[10px] font-mono text-neutral-400 uppercase block">DOCUMENTS</span>
-                    <span className="text-emerald-400 font-mono font-bold">All documents verified</span>
-                  </div>
-                  <button type="button" onClick={() => setCurrentStep(4)} className="text-xs text-amber-400 font-mono">
-                    Edit
-                  </button>
-                </div>
-                <div className="p-3 bg-neutral-900/90 border border-neutral-800 rounded-xl flex items-center justify-between">
-                  <div className="text-xs">
-                    <span className="text-[10px] font-mono text-neutral-400 uppercase block">SAFETY & MEDICAL</span>
-                    <span className="text-neutral-300 font-mono">{safety.experienceLevel} • Blood: {safety.bloodGroup}</span>
-                  </div>
-                  <button type="button" onClick={() => setCurrentStep(5)} className="text-xs text-amber-400 font-mono">
-                    Edit
-                  </button>
-                </div>
-              </div>
-
-              {/* Total Calculation Card */}
-              <div className="p-5 bg-neutral-950 border border-amber-600/40 rounded-xl space-y-2 mt-4">
-                <div className="text-xs font-mono text-amber-400 font-bold uppercase tracking-wider">
-                  PAYMENT SUMMARY
-                </div>
-                <div className="flex justify-between text-xs text-neutral-300">
-                  <span>{selectedExperience} ({pricingTier})</span>
-                  <span>₹{selectedExperience === "OWN 4X4 EXPERIENCE" ? (pricingTier === "EARLY_BIRD" ? "5,999" : "6,999") : "1,999"}</span>
-                </div>
-                {additionalCount > 0 && (
-                  <div className="flex justify-between text-xs text-neutral-300">
-                    <span>Additional Participant × {additionalCount}</span>
-                    <span>₹{additionalCount * 699}</span>
-                  </div>
-                )}
-                <div className="border-t border-neutral-800 pt-2 flex justify-between items-center">
-                  <span className="font-outfit text-base font-bold text-white uppercase">Total Amount</span>
-                  <span className="font-outfit text-2xl font-black text-amber-500">₹{calculateTotal().toLocaleString()}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Stepper Buttons */}
-            <div className="flex items-center justify-between pt-6 border-t border-neutral-700/80">
-              <button
-                type="button"
-                onClick={() => setCurrentStep(5)}
-                className="px-6 py-3 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-mono text-xs uppercase tracking-wider rounded-lg flex items-center space-x-2"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Back</span>
-              </button>
-              <button
-                type="button"
-                disabled={isSubmitting}
-                onClick={handleFinalSubmit}
-                className="px-8 py-4 bg-amber-600 hover:bg-amber-500 text-white font-outfit font-black text-base uppercase tracking-wider rounded-lg shadow-xl hover:shadow-amber-600/40 flex items-center space-x-2 transition-all"
-              >
-                {isSubmitting ? (
-                  <>
-                    <RefreshCw className="w-5 h-5 animate-spin" />
-                    <span>Processing Entry...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Proceed to Payment</span>
-                    <ArrowRight className="w-5 h-5" />
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ================= STEP 7: REGISTRATION CONFIRMED! ================= */}
-        {currentStep === 7 && confirmedData && (
-          <div className="space-y-12 animate-fadeIn">
-            <div className="bg-neutral-800/80 border border-neutral-700 rounded-2xl p-8 sm:p-12 text-center max-w-2xl mx-auto shadow-2xl relative overflow-hidden">
-              <div className="w-20 h-20 bg-emerald-950/80 border-2 border-emerald-500 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-emerald-950">
-                <CheckCircle2 className="w-10 h-10" />
-              </div>
-
-              <h2 className="font-outfit text-3xl sm:text-4xl font-black uppercase text-white tracking-tight mb-2">
-                Registration Confirmed!
-              </h2>
-              <p className="text-sm font-sans text-emerald-400 font-medium mb-6">
-                You&apos;re officially on the Trail! Scrutineering slot locked in the database.
-              </p>
-
-              {/* Unique Registration Code Badge */}
-              <div className="bg-neutral-900 p-5 rounded-xl border border-neutral-700 inline-block mb-6 min-w-[280px]">
-                <span className="text-[10px] font-mono text-neutral-400 uppercase tracking-widest block mb-1">
-                  OFFICIAL REGISTRATION ID
-                </span>
-                <span className="font-mono text-2xl sm:text-3xl font-black text-amber-400 tracking-wider">
-                  {confirmedData.registration_code}
+              <div className="flex justify-between pt-2 border-t border-neutral-800">
+                <span className="text-neutral-400">Total Captured:</span>
+                <span className="text-emerald-400 font-bold font-outfit text-sm">
+                  ₹{confirmedData?.total_amount?.toLocaleString()}
                 </span>
               </div>
+            </div>
 
-              {/* Event Quick Details */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left font-mono text-xs bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 mb-8">
-                <div>
-                  <span className="text-[10px] text-neutral-500 uppercase block">Experience</span>
-                  <span className="text-white font-bold">{confirmedData.experience_type}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-neutral-500 uppercase block">Event Date</span>
-                  <span className="text-white font-bold">{confirmedData.date}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-neutral-500 uppercase block">Venue Proving Ground</span>
-                  <span className="text-white font-bold">Urigam Village, Anchetty</span>
-                </div>
+            {/* What's Next List */}
+            <div className="max-w-md mx-auto text-left space-y-2 mb-8 text-xs text-neutral-300 font-sans">
+              <div className="font-bold text-neutral-200 text-sm mb-2">What&apos;s Next?</div>
+              <div className="flex items-center space-x-2.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span>Confirmation sent to your WhatsApp &amp; Email</span>
               </div>
-
-              {/* What's Next List */}
-              <div className="text-left bg-neutral-900/40 p-5 rounded-xl border border-neutral-800/80 mb-8 space-y-2.5">
-                <div className="text-xs font-mono text-amber-400 font-bold uppercase tracking-wider mb-2">
-                  WHAT&apos;S NEXT?
-                </div>
-                <div className="flex items-center space-x-3 text-xs text-neutral-300">
-                  <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                  <span>Confirmation sent to your WhatsApp & Email dispatch leads</span>
-                </div>
-                <div className="flex items-center space-x-3 text-xs text-neutral-300">
-                  <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                  <span>Physical vehicle scrutineering verification at event check-in</span>
-                </div>
-                <div className="flex items-center space-x-3 text-xs text-neutral-300">
-                  <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                  <span>Participant technical kit, trail decals, and beacon collection</span>
-                </div>
-                <div className="flex items-center space-x-3 text-xs text-neutral-300">
-                  <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                  <span>Mandatory safety and spotter protocol driver briefing</span>
-                </div>
+              <div className="flex items-center space-x-2.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span>Vehicle verification at event check-in</span>
               </div>
-
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="w-full sm:w-auto px-6 py-3 bg-neutral-700 hover:bg-neutral-600 text-white font-mono text-xs uppercase tracking-wider rounded-lg flex items-center justify-center space-x-2"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Download Confirmation</span>
-                </button>
-                <a
-                  href="#trail"
-                  className="w-full sm:w-auto px-6 py-3 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 font-mono text-xs uppercase tracking-wider rounded-lg border border-neutral-700 text-center"
-                >
-                  Back to Website
-                </a>
+              <div className="flex items-center space-x-2.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span>Participant kit collection</span>
+              </div>
+              <div className="flex items-center space-x-2.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span>Mandatory driver briefing</span>
               </div>
             </div>
 
-            {/* ============================================================== */}
-            {/* USER INSTRUCTION: "after registration then only we need to show the sponsor related details" */}
-            {/* ============================================================== */}
-            <div className="border-t border-neutral-800 pt-16">
-              <div className="text-center max-w-3xl mx-auto mb-10">
-                <div className="inline-flex items-center space-x-2 px-3 py-1 bg-amber-500/10 border border-amber-500/30 rounded-full text-amber-400 text-xs font-mono uppercase tracking-widest mb-3">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>UNLOCKED FOR REGISTERED PARTICIPANTS & BRANDS</span>
-                </div>
-                <h2 className="font-outfit text-3xl sm:text-5xl font-black uppercase text-white tracking-tight">
-                  COMMERCIAL SPONSORSHIPS & PARTNERSHIPS
-                </h2>
-                <p className="font-sans text-sm text-neutral-400 mt-3 leading-relaxed">
-                  Put your brand in front of top automotive enthusiasts, off-road fabricators, and industry leaders. Download the official sponsor deck or request an invoice below.
-                </p>
-              </div>
+            {/* Actions */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="w-full sm:w-auto px-6 py-3 bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center space-x-2"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download Confirmation</span>
+              </button>
 
-              {/* Embed Dynamic Sponsor Hub */}
-              <Sponsors />
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrentStep(0);
+                  setConfirmedData(null);
+                }}
+                className="w-full sm:w-auto px-6 py-3 bg-[#14532d] hover:bg-[#052e16] text-white rounded-lg text-xs font-bold transition-colors"
+              >
+                Back to Website
+              </button>
             </div>
           </div>
         )}

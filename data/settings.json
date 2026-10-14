@@ -1,0 +1,14 @@
+{
+  "online_registration_open": "true",
+  "max_slots": "50",
+  "early_bird_slots": "10",
+  "early_bird_price": "5999",
+  "regular_price": "6999",
+  "additional_person_price": "699",
+  "price_early_bird": "4999",
+  "price_regular": "6999",
+  "price_organiser": "1999",
+  "price_extreme": "999",
+  "price_additional_participant": "699",
+  "registration_closed_message": "Online registrations for 4X4 Adventure Trail 2026 are currently closed. Please contact event marshals for on-spot inquiry or waitlist."
+}

@@ -1,0 +1,27 @@
+[
+  {
+    "id": 1,
+    "code": "MAD500",
+    "description": "Special ₹500 off trail registration",
+    "discount_type": "FLAT",
+    "discount_value": 500,
+    "min_order_amount": 999,
+    "is_active": true,
+    "usage_count": 1,
+    "max_uses": 50,
+    "created_at": "2026-10-13T10:00:00.000Z"
+  },
+  {
+    "id": 2,
+    "code": "OFFROAD10",
+    "description": "10% off all trail bookings",
+    "discount_type": "PERCENTAGE",
+    "discount_value": 10,
+    "min_order_amount": 1000,
+    "max_discount_amount": 1000,
+    "is_active": true,
+    "usage_count": 0,
+    "max_uses": 100,
+    "created_at": "2026-10-13T10:00:00.000Z"
+  }
+]

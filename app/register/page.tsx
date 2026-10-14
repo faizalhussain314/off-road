@@ -12,7 +12,7 @@ export default function RegisterPage() {
   return (
     <main className="min-h-screen bg-neutral-900">
       <Navbar />
-      <div className="pt-20">
+      <div className="pt-16 sm:pt-20 pb-8">
         <Registration />
       </div>
     </main>

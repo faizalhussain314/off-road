@@ -1,0 +1,106 @@
+[
+  {
+    "registration_code": "MAT26-0011",
+    "driver_name": "Faizal Hussain",
+    "phone": "+919698258311",
+    "whatsapp": "+919698258311",
+    "email": "",
+    "driver_age": "22",
+    "driver_gender": "Male",
+    "driver_city": "Sirkazhi",
+    "driver_id_proof": "Aadhaar Card",
+    "driver_id_proof_url": "/uploads/driver_id_1791999369264_3zvsh.png",
+    "experience_type": "OWN 4X4 EXPERIENCE",
+    "experience_date": "14 NOV 2026",
+    "pricing_tier": "Early Bird",
+    "total_amount": 4499,
+    "discount_amount": 500,
+    "promo_code": "MAD500",
+    "additional_participants_count": 0,
+    "passengers": [
+      {
+        "name": "Faizal Hussain",
+        "age": "22",
+        "gender": "Male",
+        "mobile": "+919698258311",
+        "relationship": "",
+        "idProofType": "",
+        "idProofUrl": ""
+      }
+    ],
+    "vehicle_owner": "Faizal Hussain",
+    "vehicle_reg_number": "tn09dq7374",
+    "vehicle_make": "Jeep",
+    "vehicle_model": "Jeep xtreme 250R",
+    "manufacturing_year": "2026",
+    "vehicle_colour": "black",
+    "fuel_type": "Petrol",
+    "transmission": "Manual",
+    "drivetrain": "AWD",
+    "is_modified": false,
+    "rig_class": "Standard Proving Spec",
+    "modifications": "Stock Configuration",
+    "modification_details": {},
+    "documents": {
+      "rc_uploaded": true,
+      "rc_file": "WhatsApp Image 2026-10-05 at 6.57.39 PM.jpeg",
+      "rc_url": "/uploads/doc_rc_1791999436635_vk7i9.jpeg",
+      "insurance_company": "",
+      "insurance_policy": "",
+      "insurance_expiry": "",
+      "insurance_uploaded": false,
+      "insurance_url": "",
+      "puc_number": "",
+      "puc_expiry": "",
+      "puc_uploaded": false,
+      "puc_url": ""
+    },
+    "safety_experience": {
+      "experienceLevel": "Intermediate",
+      "participatedBefore": "No",
+      "eventCount": "",
+      "terrains": [
+        "Mud"
+      ],
+      "bloodGroup": "B+",
+      "allergies": "",
+      "medicalConditions": "",
+      "currentMedication": ""
+    },
+    "experience_years": "",
+    "spotter_name": "Faizal Hussain",
+    "spotter_phone": "+919698258311",
+    "payment_status": "PAID",
+    "payment_amount": 6999,
+    "payment_order_id": "MAT26_99484545_6108",
+    "payment_gateway": "CASHFREE",
+    "captcha_verified": true,
+    "status": "SLOT_CONFIRMED",
+    "call_notes": "Cashfree order initiated: MAT26_99484545_6108",
+    "slot_number": null,
+    "source": "ONLINE_WEB",
+    "id": 11,
+    "payment_id": "CF_TEST_1791999485404",
+    "payment_method": "UPI - GPAY (driver@okaxis)",
+    "payment_time": "2026-10-14T17:38:05.404Z",
+    "created_at": "2026-10-14T17:38:04.548Z",
+    "updated_at": "2026-10-14T17:38:05.406Z",
+    "payment_raw_response": {
+      "cf_payment_id": "CF_TEST_1791999485404",
+      "order_id": "MAT26_99484545_6108",
+      "entity": "payment",
+      "payment_currency": "INR",
+      "payment_amount": 6999,
+      "payment_time": "2026-10-14T17:38:05.404Z",
+      "payment_status": "SUCCESS",
+      "payment_message": "Test Payment Captured (Sandbox Mock)",
+      "payment_group": "upi",
+      "payment_method": {
+        "upi": {
+          "channel": "gpay",
+          "upi_id": "driver@okaxis"
+        }
+      }
+    }
+  }
+]

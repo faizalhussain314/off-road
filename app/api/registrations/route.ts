@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRegistrations, createRegistration, updateRegistration, deleteRegistration, initDb } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   try {
     await initDb();
@@ -8,8 +10,9 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || undefined;
     const status = searchParams.get("status") || undefined;
     const rigClass = searchParams.get("rigClass") || undefined;
+    const paymentStatus = searchParams.get("paymentStatus") || undefined;
 
-    const data = await getRegistrations({ search, status, rigClass });
+    const data = await getRegistrations({ search, status, rigClass, paymentStatus });
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
     console.error("GET /api/registrations error:", error);
@@ -32,6 +35,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Google Captcha validation: ensure token or verified flag is present
+    const captchaValid = Boolean(body.captcha_token || body.captcha_verified);
+    if (!captchaValid) {
+      return NextResponse.json(
+        { success: false, error: "Please complete Google reCAPTCHA verification to proceed." },
+        { status: 400 }
+      );
+    }
+
     const newRecord = await createRegistration({
       registration_code: body.registration_code,
       driver_name: body.driver_name,
@@ -42,11 +54,14 @@ export async function POST(request: NextRequest) {
       driver_gender: body.driver_gender,
       driver_city: body.driver_city,
       driver_id_proof: body.driver_id_proof,
+      driver_id_proof_url: body.driver_id_proof_url || body.driver_id_proof,
 
       experience_type: body.experience_type || "DAY 1: OWN 4X4 EXPERIENCE",
       experience_date: body.experience_date || "14 NOV 2026",
       pricing_tier: body.pricing_tier || "Regular",
       total_amount: Number(body.total_amount) || 6999,
+      discount_amount: body.discount_amount ? Number(body.discount_amount) : 0,
+      promo_code: body.promo_code || undefined,
       additional_participants_count: Number(body.additional_participants_count) || 0,
 
       passengers: body.passengers || [],
@@ -71,6 +86,7 @@ export async function POST(request: NextRequest) {
       spotter_name: body.spotter_name || (body.passengers?.[0]?.name || ""),
       spotter_phone: body.spotter_phone || (body.passengers?.[0]?.mobile || ""),
 
+      captcha_verified: true,
       status: body.status || "PENDING_CALL",
       call_notes: body.call_notes || "",
       slot_number: body.slot_number ? Number(body.slot_number) : null,
