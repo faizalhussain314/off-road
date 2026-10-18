@@ -111,7 +111,7 @@ export interface RegistrationRecord {
   captcha_verified?: boolean;
   driver_id_proof_url?: string;
 
-  // Payment Gateway (Cashfree)
+  // Payment & UPI
   payment_status?: "PENDING" | "PAID" | "FAILED" | "USER_DROPPED";
   payment_amount?: number;
   payment_id?: string;
@@ -120,9 +120,22 @@ export interface RegistrationRecord {
   payment_time?: string;
   payment_gateway?: string;
   payment_raw_response?: any;
+  payment_screenshot_url?: string;
+  payment_utr?: string;
+
+  // Account Setup & Security
+  password_hash?: string;
+  set_password_token?: string;
+  is_password_set?: boolean;
+
+  // Ticket & Proving Ground Check-in
+  ticket_qr_token?: string;
+  checkin_status?: "NOT_CHECKED_IN" | "CHECKED_IN";
+  checkin_time?: string;
+  verification_status?: "PENDING_VERIFICATION" | "VERIFIED" | "REJECTED";
 
   // Status & Metadata
-  status: "PENDING_CALL" | "CALLED_FOLLOW_UP" | "SCRUTINEERING_REVIEW" | "SLOT_CONFIRMED" | "WAITLISTED" | "CANCELLED";
+  status: "PENDING_CALL" | "CALLED_FOLLOW_UP" | "SCRUTINEERING_REVIEW" | "SLOT_CONFIRMED" | "WAITLISTED" | "CANCELLED" | "CHECKED_IN";
   call_notes?: string;
   slot_number?: number | null;
   source: "PHONE_MANUAL" | "ONLINE_WEB";
@@ -1059,3 +1072,42 @@ export async function validatePromoCode(
     promo,
   };
 }
+
+export async function getRegistrationByCode(code: string): Promise<RegistrationRecord | null> {
+  const store = globalThis.__offroad_registrations || loadFromFile<RegistrationRecord[]>(REG_FILE, []);
+  const clean = code.trim().toUpperCase();
+  return store.find((r) => r.registration_code?.toUpperCase() === clean) || null;
+}
+
+export async function getRegistrationByToken(token: string): Promise<RegistrationRecord | null> {
+  const store = globalThis.__offroad_registrations || loadFromFile<RegistrationRecord[]>(REG_FILE, []);
+  return store.find((r) => r.set_password_token === token) || null;
+}
+
+export async function getRegistrationByQrToken(qrToken: string): Promise<RegistrationRecord | null> {
+  const store = globalThis.__offroad_registrations || loadFromFile<RegistrationRecord[]>(REG_FILE, []);
+  const clean = qrToken.trim();
+  return (
+    store.find(
+      (r) =>
+        r.ticket_qr_token === clean ||
+        r.registration_code?.toUpperCase() === clean.toUpperCase()
+    ) || null
+  );
+}
+
+export async function getRegistrationByIdentifier(identifier: string): Promise<RegistrationRecord | null> {
+  const store = globalThis.__offroad_registrations || loadFromFile<RegistrationRecord[]>(REG_FILE, []);
+  const clean = identifier.trim().toLowerCase();
+  const cleanPhone = identifier.replace(/[^0-9]/g, "");
+
+  return (
+    store.find((r) => {
+      if (r.email && r.email.toLowerCase() === clean) return true;
+      if (r.registration_code && r.registration_code.toLowerCase() === clean) return true;
+      if (cleanPhone && r.phone && r.phone.replace(/[^0-9]/g, "").includes(cleanPhone)) return true;
+      return false;
+    }) || null
+  );
+}
+

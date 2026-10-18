@@ -44,6 +44,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const setPasswordToken = `tok_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    const ticketQrToken = `TKT_${Date.now()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
     const newRecord = await createRegistration({
       registration_code: body.registration_code,
       driver_name: body.driver_name,
@@ -86,14 +89,56 @@ export async function POST(request: NextRequest) {
       spotter_name: body.spotter_name || (body.passengers?.[0]?.name || ""),
       spotter_phone: body.spotter_phone || (body.passengers?.[0]?.mobile || ""),
 
+      // UPI Payment Fields
+      payment_method: body.payment_method || "UPI_QR_MANUAL",
+      payment_gateway: "UPI_DIRECT",
+      payment_status: body.payment_status || "PENDING",
+      payment_amount: Number(body.payment_amount || body.total_amount) || 6999,
+      payment_time: new Date().toISOString(),
+      payment_screenshot_url: body.payment_screenshot_url || "",
+      payment_utr: body.payment_utr || "",
+
+      // Authentication & Account Setup
+      set_password_token: setPasswordToken,
+      is_password_set: false,
+
+      // Scrutineering & Proving Ground Verification
+      ticket_qr_token: ticketQrToken,
+      checkin_status: "NOT_CHECKED_IN",
+      verification_status: body.verification_status || "PENDING_VERIFICATION",
+
       captcha_verified: true,
-      status: body.status || "PENDING_CALL",
-      call_notes: body.call_notes || "",
+      status: body.status || "SCRUTINEERING_REVIEW",
+      call_notes: body.call_notes || (body.payment_utr ? `UPI UTR: ${body.payment_utr}` : "UPI Payment submitted for verification"),
       slot_number: body.slot_number ? Number(body.slot_number) : null,
       source: body.source || "ONLINE_WEB",
     });
 
-    return NextResponse.json({ success: true, data: newRecord }, { status: 201 });
+    // Send Set Password Email if driver email provided
+    let emailResult = null;
+    if (body.email && body.email.includes("@")) {
+      try {
+        const { sendPasswordSetupEmail } = await import("@/lib/email");
+        emailResult = await sendPasswordSetupEmail({
+          toEmail: body.email.trim(),
+          driverName: body.driver_name,
+          registrationCode: newRecord.registration_code || `MAT26-${newRecord.id}`,
+          token: setPasswordToken,
+        });
+      } catch (e) {
+        console.error("Failed to send password setup email:", e);
+      }
+    }
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const setupUrl = `${appUrl}/set-password?token=${setPasswordToken}&email=${encodeURIComponent(body.email || "")}`;
+
+    return NextResponse.json({
+      success: true,
+      data: newRecord,
+      setup_password_url: setupUrl,
+      email_sent: Boolean(emailResult?.success),
+    }, { status: 201 });
   } catch (error: any) {
     console.error("POST /api/registrations error:", error);
     return NextResponse.json(
@@ -116,6 +161,25 @@ export async function PATCH(request: NextRequest) {
     const updated = await updateRegistration(Number(id), updates);
     if (!updated) {
       return NextResponse.json({ success: false, error: "Registration not found" }, { status: 404 });
+    }
+
+    // If status became SLOT_CONFIRMED or verification_status became VERIFIED, send notification email
+    if (
+      (updates.status === "SLOT_CONFIRMED" || updates.verification_status === "VERIFIED") &&
+      updated.email &&
+      updated.email.includes("@")
+    ) {
+      try {
+        const { sendTicketApprovedEmail } = await import("@/lib/email");
+        await sendTicketApprovedEmail({
+          toEmail: updated.email,
+          driverName: updated.driver_name,
+          registrationCode: updated.registration_code || `MAT26-${updated.id}`,
+          slotNumber: updated.slot_number,
+        });
+      } catch (err) {
+        console.error("Failed to send approval email:", err);
+      }
     }
 
     return NextResponse.json({ success: true, data: updated });

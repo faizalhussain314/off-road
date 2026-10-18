@@ -17,6 +17,12 @@ export async function GET() {
       "Online registrations for 4X4 Adventure Trail 2026 are currently closed. Please contact event marshals for on-spot inquiry or waitlist."
     );
 
+    const smtpHost = (await getSetting("smtp_host", "")) || process.env.SMTP_HOST || "smtp.gmail.com";
+    const smtpPort = (await getSetting("smtp_port", "")) || process.env.SMTP_PORT || "465";
+    const smtpUser = (await getSetting("smtp_user", "")) || process.env.SMTP_USER || "";
+    const smtpPass = (await getSetting("smtp_pass", "")) || process.env.SMTP_PASS || "";
+    const smtpFrom = (await getSetting("smtp_from", "")) || process.env.SMTP_FROM || "";
+
     return NextResponse.json({
       success: true,
       data: {
@@ -31,6 +37,12 @@ export async function GET() {
         mysql_connected: isMysql,
         database_host: process.env.MYSQL_HOST || "localhost",
         database_name: process.env.MYSQL_DATABASE || "madprotek_offroad",
+        smtp_host: smtpHost,
+        smtp_port: smtpPort,
+        smtp_user: smtpUser,
+        smtp_pass: smtpPass ? "••••••••" : "",
+        smtp_from: smtpFrom,
+        is_smtp_configured: Boolean(smtpUser && smtpPass),
       },
     });
   } catch (error: any) {
@@ -77,6 +89,22 @@ export async function POST(request: NextRequest) {
 
     if (typeof body.registration_closed_message !== "undefined") {
       await setSetting("registration_closed_message", String(body.registration_closed_message));
+    }
+
+    if (body.smtp_host) {
+      await setSetting("smtp_host", String(body.smtp_host));
+    }
+    if (body.smtp_port) {
+      await setSetting("smtp_port", String(body.smtp_port));
+    }
+    if (body.smtp_user) {
+      await setSetting("smtp_user", String(body.smtp_user));
+    }
+    if (body.smtp_pass && body.smtp_pass !== "••••••••") {
+      await setSetting("smtp_pass", String(body.smtp_pass));
+    }
+    if (body.smtp_from) {
+      await setSetting("smtp_from", String(body.smtp_from));
     }
 
     return NextResponse.json({ success: true, message: "Settings updated successfully" });

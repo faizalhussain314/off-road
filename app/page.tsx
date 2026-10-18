@@ -2,6 +2,7 @@ import dynamic from "next/dynamic";
 import { Navbar } from "@/components/navigation/Navbar";
 import { EventOverview } from "@/components/sections/EventOverview";
 import { TrailPreview } from "@/components/sections/TrailPreview";
+import { EventGallery } from "@/components/sections/EventGallery";
 import { Safety } from "@/components/sections/Safety";
 import { Registration } from "@/components/sections/Registration";
 import { Contact } from "@/components/sections/Contact";
@@ -23,6 +24,7 @@ export default function Home() {
       <Hero />
       <EventOverview />
       <TrailPreview />
+      <EventGallery />
       <Safety />
       <Registration />
       <Contact />

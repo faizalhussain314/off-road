@@ -33,9 +33,14 @@ import {
   Percent,
   CreditCard,
   Clock,
+  QrCode,
+  Image as ImageIcon,
+  FileDown,
+  CheckSquare,
 } from "lucide-react";
 import Link from "next/link";
 import { RegistrationRecord, SponsorInquiryRecord, PromoCodeRecord } from "@/lib/db";
+import TicketScanner from "@/components/admin/TicketScanner";
 
 const PAYMENT_STATUS_CONFIG: Record<
   string,
@@ -107,6 +112,12 @@ const STATUS_CONFIG: Record<
     bg: "bg-red-50",
     border: "border-red-200",
   },
+  CHECKED_IN: {
+    label: "CHECKED IN",
+    color: "text-emerald-900",
+    bg: "bg-emerald-100",
+    border: "border-emerald-500",
+  },
 };
 
 const SPONSOR_STATUS_CONFIG: Record<
@@ -146,7 +157,7 @@ const SPONSOR_STATUS_CONFIG: Record<
 };
 
 export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState<"registrations" | "sponsors" | "promocodes" | "settings">("registrations");
+  const [activeTab, setActiveTab] = useState<"registrations" | "sponsors" | "promocodes" | "settings" | "scan-ticket">("registrations");
 
   // Registrations state
   const [registrations, setRegistrations] = useState<RegistrationRecord[]>([]);
@@ -198,6 +209,12 @@ export default function AdminPage() {
     mysql_connected: boolean;
     database_host: string;
     database_name: string;
+    smtp_host?: string;
+    smtp_port?: string;
+    smtp_user?: string;
+    smtp_pass?: string;
+    smtp_from?: string;
+    is_smtp_configured?: boolean;
   }>({
     online_registration_open: true,
     max_slots: 50,
@@ -211,7 +228,38 @@ export default function AdminPage() {
     mysql_connected: false,
     database_host: "localhost",
     database_name: "madprotek_offroad",
+    smtp_host: "smtp.gmail.com",
+    smtp_port: "465",
+    smtp_user: "",
+    smtp_pass: "",
+    smtp_from: "",
+    is_smtp_configured: false,
   });
+  const [testEmailAddress, setTestEmailAddress] = useState("faizalhussain314@gmail.com");
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
+  const [testEmailFeedback, setTestEmailFeedback] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleSendTestEmail = async () => {
+    if (!testEmailAddress) return;
+    setSendingTestEmail(true);
+    setTestEmailFeedback(null);
+    try {
+      const res = await fetch("/api/admin/test-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toEmail: testEmailAddress }),
+      });
+      const data = await res.json();
+      setTestEmailFeedback({
+        success: data.success,
+        message: data.success ? data.message : (data.error || "Failed to deliver email"),
+      });
+    } catch (err: any) {
+      setTestEmailFeedback({ success: false, message: err.message || "Failed to test email" });
+    } finally {
+      setSendingTestEmail(false);
+    }
+  };
   const [isTogglingSetting, setIsTogglingSetting] = useState(false);
   const [settingsSavedNotice, setSettingsSavedNotice] = useState("");
 
@@ -521,6 +569,11 @@ export default function AdminPage() {
           price_extreme: settings.price_extreme,
           price_additional_participant: settings.price_additional_participant,
           registration_closed_message: settings.registration_closed_message,
+          smtp_host: settings.smtp_host,
+          smtp_port: settings.smtp_port,
+          smtp_user: settings.smtp_user,
+          smtp_pass: settings.smtp_pass,
+          smtp_from: settings.smtp_from,
         }),
       });
       const json = await res.json();
@@ -579,6 +632,78 @@ export default function AdminPage() {
     } catch (err) {
       console.error("Failed to update payment status:", err);
     }
+  };
+
+  // Approve Registration & Confirm Slot (issues official pass and dispatches approval email)
+  const handleApproveEntry = async (id: number) => {
+    try {
+      const record = registrations.find((r) => r.id === id);
+      if (!record) return;
+
+      const maxAssignedSlot = registrations.reduce(
+        (max, r) => (r.slot_number && r.slot_number > max ? r.slot_number : max),
+        0
+      );
+      const assignedSlot = record.slot_number || maxAssignedSlot + 1;
+
+      const updates: any = {
+        status: "SLOT_CONFIRMED",
+        verification_status: "VERIFIED",
+        payment_status: "PAID",
+        payment_time: new Date().toISOString(),
+        slot_number: assignedSlot,
+      };
+
+      const res = await fetch(`/api/registrations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      const json = await res.json();
+      if (json.success && json.data) {
+        setRegistrations((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, ...json.data } : r))
+        );
+        if (dossierRecord && dossierRecord.id === id) {
+          setDossierRecord((prev) => (prev ? { ...prev, ...json.data } : null));
+        }
+        setSyncMessage(`✓ Entry ${json.data.registration_code || id} approved & verified as Slot #${assignedSlot}. Entry pass activated and email dispatched!`);
+        setTimeout(() => setSyncMessage(null), 6000);
+      }
+    } catch (err) {
+      console.error("Approve entry error:", err);
+    }
+  };
+
+  // Send official QR ticket pass directly via WhatsApp
+  const handleSendWhatsAppTicket = (rec: RegistrationRecord) => {
+    const rawNumber = (rec.whatsapp || rec.phone || "").replace(/[^0-9]/g, "");
+    if (!rawNumber) {
+      alert("No WhatsApp or mobile number found on record for this participant.");
+      return;
+    }
+    const cleanPhone = rawNumber.length === 10 ? `91${rawNumber}` : rawNumber;
+    const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+    const ticketUrl = `${origin}/my-ticket?code=${encodeURIComponent(rec.registration_code || `MAT26-${rec.id}`)}`;
+
+    const message =
+      `🏁 *MADPROTEK 4X4 ADVENTURE TRAIL 2026* 🏁\n\n` +
+      `Hello *${rec.driver_name}*,\n\n` +
+      `Your registration and payment have been verified by Chief Marshals! Your slot is officially *CONFIRMED*.\n\n` +
+      `📋 *Registration Code:* ${rec.registration_code || `MAT26-${rec.id}`}\n` +
+      `🎯 *Assigned Slot:* ${rec.slot_number ? `Slot #${rec.slot_number}` : "Confirmed"}\n` +
+      `🚙 *Vehicle:* ${rec.vehicle_model} (${rec.vehicle_reg_number || "Verified"})\n` +
+      `📅 *Date:* ${rec.experience_date || "14–15 Nov 2026"}\n` +
+      `📍 *Location:* Urigam Proving Ground, Anchetty Corridor\n\n` +
+      `🎟️ *CLICK THE LINK BELOW TO VIEW & DOWNLOAD YOUR OFFICIAL QR TICKET:*\n` +
+      `${ticketUrl}\n\n` +
+      `📲 Please present this QR code at the scrutineering bay upon your arrival for quick clearance.\n\n` +
+      `_See you on the rocks!_\n` +
+      `*MadProTek Chief Marshal Team*`;
+
+    const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+    window.open(waUrl, "_blank");
   };
 
   // Live Sync with Cashfree Payment Gateway
@@ -1071,6 +1196,18 @@ export default function AdminPage() {
             <Settings className="w-4 h-4" />
             <span>Proving Ground Controls</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab("scan-ticket")}
+            className={`px-5 py-3 font-outfit font-bold text-xs sm:text-sm uppercase tracking-wider border-b-2 flex items-center space-x-2 transition-all whitespace-nowrap ${
+              activeTab === "scan-ticket"
+                ? "border-amber-600 text-amber-700 bg-amber-50/70"
+                : "border-transparent text-neutral-600 hover:text-neutral-900"
+            }`}
+          >
+            <QrCode className="w-4 h-4 text-amber-600" />
+            <span>Scan Ticket (Check-In)</span>
+          </button>
         </div>
 
         {/* ======================================================== */}
@@ -1248,10 +1385,10 @@ export default function AdminPage() {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-neutral-200 bg-sand-100 text-[11px] font-mono text-neutral-700 uppercase font-bold">
-                      <th className="py-3 px-4">CODE & SLOT</th>
-                      <th className="py-3 px-4">DRIVER & CONTACT</th>
-                      <th className="py-3 px-4">EXPERIENCE & TOTAL</th>
-                      <th className="py-3 px-4">PAYMENT (CASHFREE)</th>
+                      <th className="py-3 px-4">CODE &amp; SLOT</th>
+                      <th className="py-3 px-4">DRIVER &amp; CONTACT</th>
+                      <th className="py-3 px-4">EXPERIENCE &amp; TOTAL</th>
+                      <th className="py-3 px-4">PAYMENT &amp; PROOF (UPI)</th>
                       <th className="py-3 px-4">VEHICLE MACHINE</th>
                       <th className="py-3 px-4">STATUS</th>
                       <th className="py-3 px-4 text-right">ACTIONS</th>
@@ -1266,9 +1403,16 @@ export default function AdminPage() {
                         <tr key={rec.id} className="hover:bg-sand-50 transition-colors">
                           <td className="py-3.5 px-4 whitespace-nowrap">
                             <span className="font-mono font-bold text-amber-700 block">{regCode}</span>
-                            <span className="text-[10px] font-mono text-neutral-500">
-                              {rec.slot_number ? `SLOT #${String(rec.slot_number).padStart(2, "0")}` : "NO SLOT ASSIGNED"}
-                            </span>
+                            <div className="flex items-center space-x-1.5 mt-0.5">
+                              <span className="text-[10px] font-mono text-neutral-500">
+                                {rec.slot_number ? `SLOT #${String(rec.slot_number).padStart(2, "0")}` : "NO SLOT ASSIGNED"}
+                              </span>
+                              {rec.checkin_status === "CHECKED_IN" && (
+                                <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 text-[9px] font-mono font-bold rounded">
+                                  IN ✓
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           <td className="py-3.5 px-4 min-w-[180px]">
@@ -1309,63 +1453,90 @@ export default function AdminPage() {
                             </div>
                           </td>
 
-                          {/* Cashfree Payment Column */}
-                          <td className="py-3.5 px-4 whitespace-nowrap min-w-[170px]">
+                          {/* Payment & UPI Proof Column */}
+                          <td className="py-3.5 px-4 whitespace-nowrap min-w-[190px]">
                             {rec.payment_status === "PAID" ? (
-                              <div>
+                              <div className="space-y-1">
                                 <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-300">
                                   <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                  <span>CAPTURED</span>
-                                  <span>(₹{(rec.payment_amount || rec.total_amount || 0).toLocaleString()})</span>
+                                  <span>PAID (₹{(rec.payment_amount || rec.total_amount || 0).toLocaleString()})</span>
                                 </span>
-                                <div className="text-[10px] font-mono text-neutral-600 mt-1 flex items-center space-x-1">
-                                  <CreditCard className="w-3 h-3 text-neutral-400" />
-                                  <span>{rec.payment_method || "Cashfree PG"}</span>
-                                </div>
-                                {rec.payment_id && (
-                                  <div className="text-[9px] font-mono text-neutral-400 truncate max-w-[160px]" title={`Payment ID: ${rec.payment_id}`}>
-                                    Ref: {rec.payment_id}
+                                {rec.payment_utr && (
+                                  <div className="text-[10px] font-mono text-neutral-700">
+                                    UTR: <span className="font-bold select-all">{rec.payment_utr}</span>
+                                  </div>
+                                )}
+                                {rec.payment_screenshot_url && (
+                                  <div className="flex items-center space-x-2 pt-0.5">
+                                    <a
+                                      href={rec.payment_screenshot_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-[10px] font-mono text-amber-700 hover:underline flex items-center space-x-1"
+                                    >
+                                      <Eye className="w-2.5 h-2.5" />
+                                      <span>Receipt</span>
+                                    </a>
+                                    <span className="text-neutral-300">•</span>
+                                    <a
+                                      href={rec.payment_screenshot_url}
+                                      download={`Receipt_${rec.registration_code || rec.id}.jpg`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-[10px] font-mono text-neutral-800 hover:text-amber-800 flex items-center space-x-1 font-bold"
+                                    >
+                                      <Download className="w-2.5 h-2.5 text-neutral-500" />
+                                      <span>Download</span>
+                                    </a>
                                   </div>
                                 )}
                               </div>
-                            ) : rec.payment_status === "FAILED" ? (
-                              <div>
-                                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-red-50 text-red-700 border border-red-300">
-                                  <AlertCircle className="w-3 h-3 text-red-600" />
-                                  <span>FAILED</span>
-                                </span>
-                                <button
-                                  onClick={() => handleVerifyPayment(rec.payment_order_id, rec.id)}
-                                  disabled={syncingPaymentId === rec.id}
-                                  className="text-[10px] font-mono text-amber-700 hover:text-amber-900 block mt-1 hover:underline"
-                                >
-                                  {syncingPaymentId === rec.id ? "Checking..." : "↻ Re-check PG"}
-                                </button>
-                              </div>
                             ) : (
-                              <div>
-                                <div className="flex items-center space-x-1">
-                                  <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-300">
+                              <div className="space-y-1">
+                                <div className="flex items-center space-x-1.5">
+                                  <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-300">
                                     <Clock className="w-3 h-3 text-amber-600" />
-                                    <span>PENDING</span>
+                                    <span>PENDING VERIFY</span>
                                   </span>
                                   <button
-                                    onClick={() => handlePaymentStatusChange(rec.id, "PAID")}
-                                    className="text-[9px] font-mono px-1.5 py-0.5 bg-neutral-100 hover:bg-emerald-50 hover:text-emerald-800 text-neutral-600 rounded border border-neutral-300"
-                                    title="Mark Captured Manually"
+                                    onClick={() => handleApproveEntry(rec.id)}
+                                    className="text-[9px] font-mono font-bold px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded shadow-xs"
+                                    title="Approve UPI Payment & Issue Entry Pass"
                                   >
-                                    Mark Paid
+                                    ✓ Approve
                                   </button>
                                 </div>
-                                <button
-                                  onClick={() => handleVerifyPayment(rec.payment_order_id, rec.id)}
-                                  disabled={syncingPaymentId === rec.id}
-                                  className="text-[10px] font-mono text-amber-700 hover:text-amber-900 block mt-1 hover:underline flex items-center space-x-1"
-                                  title="Check live status from Cashfree"
-                                >
-                                  <RefreshCw className={`w-2.5 h-2.5 ${syncingPaymentId === rec.id ? "animate-spin" : ""}`} />
-                                  <span>Verify Cashfree</span>
-                                </button>
+                                {rec.payment_utr && (
+                                  <div className="text-[10px] font-mono text-neutral-700">
+                                    UTR: <span className="font-bold select-all">{rec.payment_utr}</span>
+                                  </div>
+                                )}
+                                {rec.payment_screenshot_url ? (
+                                  <div className="flex items-center space-x-2 pt-0.5">
+                                    <a
+                                      href={rec.payment_screenshot_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-[10px] font-mono text-amber-700 hover:underline flex items-center space-x-1 font-bold"
+                                    >
+                                      <Eye className="w-2.5 h-2.5" />
+                                      <span>View Proof</span>
+                                    </a>
+                                    <span className="text-neutral-300">•</span>
+                                    <a
+                                      href={rec.payment_screenshot_url}
+                                      download={`Receipt_${rec.registration_code || rec.id}.jpg`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-[10px] font-mono text-neutral-800 hover:text-amber-800 flex items-center space-x-1 font-bold"
+                                    >
+                                      <Download className="w-2.5 h-2.5 text-neutral-500" />
+                                      <span>Download</span>
+                                    </a>
+                                  </div>
+                                ) : (
+                                  <div className="text-[9px] font-mono text-neutral-400 italic">No receipt attached</div>
+                                )}
                               </div>
                             )}
                           </td>
@@ -1400,6 +1571,14 @@ export default function AdminPage() {
 
                           <td className="py-3.5 px-4 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end space-x-1.5">
+                              <button
+                                onClick={() => handleSendWhatsAppTicket(rec)}
+                                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-mono font-bold rounded flex items-center space-x-1 shadow-xs transition-colors"
+                                title="Send official ticket with QR code link to driver via WhatsApp"
+                              >
+                                <MessageSquare className="w-3 h-3" />
+                                <span>Send Ticket in WhatsApp</span>
+                              </button>
                               <button
                                 onClick={() => setDossierRecord(rec)}
                                 className="px-2 py-1 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-[11px] font-mono rounded flex items-center space-x-1"
@@ -2015,6 +2194,128 @@ export default function AdminPage() {
               </div>
             </div>
 
+            {/* Email Dispatcher (SMTP) Configuration */}
+            <div className="p-5 bg-sand-100 border border-neutral-300 rounded space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-neutral-200">
+                <div>
+                  <span className="font-outfit font-bold text-sm block">AUTOMATED EMAIL DISPATCHER (SMTP)</span>
+                  <span className="text-xs text-neutral-600 block">
+                    Configures automated emails for driver password setup links and official ticket approvals.
+                  </span>
+                </div>
+                <span className={`px-2.5 py-0.5 rounded text-[10px] font-mono font-bold ${
+                  settings.is_smtp_configured
+                    ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                    : "bg-amber-100 text-amber-800 border border-amber-300"
+                }`}>
+                  {settings.is_smtp_configured ? "SMTP ACTIVE ✓" : "SETUP NEEDED"}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-mono">
+                <div className="p-3 bg-white border border-neutral-200 rounded space-y-1">
+                  <label className="block font-bold text-neutral-800 uppercase text-[11px]">
+                    Sender Email / Gmail ID
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.smtp_user || ""}
+                    onChange={(e) => setSettings({ ...settings, smtp_user: e.target.value })}
+                    placeholder="e.g. faizalhussain314@gmail.com"
+                    className="w-full px-3 py-1.5 border border-neutral-300 rounded text-neutral-900 text-xs"
+                  />
+                  <span className="text-[10px] text-neutral-500 block">Your outgoing mail account</span>
+                </div>
+
+                <div className="p-3 bg-white border border-neutral-200 rounded space-y-1">
+                  <label className="block font-bold text-neutral-800 uppercase text-[11px]">
+                    App Password (16 Characters)
+                  </label>
+                  <input
+                    type="password"
+                    value={settings.smtp_pass || ""}
+                    onChange={(e) => setSettings({ ...settings, smtp_pass: e.target.value })}
+                    placeholder="••••••••••••••••"
+                    className="w-full px-3 py-1.5 border border-neutral-300 rounded text-neutral-900 text-xs"
+                  />
+                  <span className="text-[10px] text-neutral-500 block">
+                    Gmail: Generate at <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="text-amber-700 underline">Google App Passwords</a>
+                  </span>
+                </div>
+
+                <div className="p-3 bg-white border border-neutral-200 rounded space-y-1">
+                  <label className="block font-bold text-neutral-800 uppercase text-[11px]">
+                    SMTP Host
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.smtp_host || "smtp.gmail.com"}
+                    onChange={(e) => setSettings({ ...settings, smtp_host: e.target.value })}
+                    placeholder="smtp.gmail.com"
+                    className="w-full px-3 py-1.5 border border-neutral-300 rounded text-neutral-900 text-xs"
+                  />
+                  <span className="text-[10px] text-neutral-500 block">Default: smtp.gmail.com</span>
+                </div>
+
+                <div className="p-3 bg-white border border-neutral-200 rounded space-y-1">
+                  <label className="block font-bold text-neutral-800 uppercase text-[11px]">
+                    SMTP Port
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.smtp_port || "465"}
+                    onChange={(e) => setSettings({ ...settings, smtp_port: e.target.value })}
+                    placeholder="465"
+                    className="w-full px-3 py-1.5 border border-neutral-300 rounded text-neutral-900 text-xs"
+                  />
+                  <span className="text-[10px] text-neutral-500 block">465 (SSL) or 587 (TLS)</span>
+                </div>
+              </div>
+
+              {/* Direct Test Email Trigger */}
+              <div className="p-3 bg-neutral-50 border border-neutral-200 rounded flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-xs font-mono">
+                <div className="flex-1">
+                  <label className="block text-[10px] text-neutral-500 uppercase font-bold mb-1">Send Test Email To:</label>
+                  <input
+                    type="email"
+                    value={testEmailAddress}
+                    onChange={(e) => setTestEmailAddress(e.target.value)}
+                    placeholder="faizalhussain314@gmail.com"
+                    className="w-full px-3 py-1.5 bg-white border border-neutral-300 rounded text-neutral-900 text-xs"
+                  />
+                </div>
+                <div className="sm:self-end">
+                  <button
+                    type="button"
+                    onClick={handleSendTestEmail}
+                    disabled={sendingTestEmail || !testEmailAddress}
+                    className="w-full sm:w-auto px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded text-xs font-mono font-bold flex items-center justify-center space-x-1.5 disabled:opacity-50"
+                  >
+                    {sendingTestEmail ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>SENDING TEST...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>SEND TEST EMAIL</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {testEmailFeedback && (
+                <div className={`p-3 rounded text-xs font-mono border ${
+                  testEmailFeedback.success
+                    ? "bg-emerald-50 text-emerald-900 border-emerald-300"
+                    : "bg-red-50 text-red-900 border-red-300"
+                }`}>
+                  {testEmailFeedback.message}
+                </div>
+              )}
+            </div>
+
             {/* Save Button */}
             <div className="flex justify-end pt-2">
               <button
@@ -2036,6 +2337,23 @@ export default function AdminPage() {
                 )}
               </button>
             </div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* TAB 5: SCAN TICKET & CHECK-IN */}
+        {/* ======================================================== */}
+        {activeTab === "scan-ticket" && (
+          <div className="space-y-6">
+            <TicketScanner
+              onCheckedIn={() => {
+                fetch("/api/registrations")
+                  .then((r) => r.json())
+                  .then((json) => {
+                    if (json.success && json.data) setRegistrations(json.data);
+                  });
+              }}
+            />
           </div>
         )}
       </main>
@@ -2086,91 +2404,178 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* Cashfree Payment & Settlement Dossier */}
-              <div className="border border-neutral-200 rounded-lg p-4 bg-white shadow-sm space-y-3">
+              {/* UPI Direct Payment & Scrutineering Verification Dossier */}
+              <div className="border border-neutral-200 rounded-lg p-4 bg-white shadow-sm space-y-4">
                 <div className="flex items-center justify-between pb-2 border-b border-neutral-100">
                   <div className="flex items-center space-x-2">
-                    <CreditCard className="w-4 h-4 text-emerald-600" />
+                    <CreditCard className="w-4 h-4 text-amber-600" />
                     <h4 className="font-mono text-xs font-bold text-neutral-900 uppercase">
-                      CASHFREE PAYMENT CAPTURE &amp; AUDIT
+                      UPI PAYMENT &amp; ENTRY PASS VERIFICATION
                     </h4>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => handleVerifyPayment(dossierRecord.payment_order_id, dossierRecord.id)}
-                      disabled={syncingPaymentId === dossierRecord.id}
-                      className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 text-[10px] font-mono font-bold rounded flex items-center space-x-1"
-                    >
-                      <RefreshCw className={`w-3 h-3 ${syncingPaymentId === dossierRecord.id ? "animate-spin" : ""}`} />
-                      <span>{syncingPaymentId === dossierRecord.id ? "Syncing..." : "Re-sync Cashfree"}</span>
-                    </button>
+                    <span className={`px-2.5 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                      dossierRecord.verification_status === "VERIFIED"
+                        ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                        : dossierRecord.verification_status === "REJECTED"
+                        ? "bg-red-50 text-red-800 border-red-300"
+                        : "bg-amber-50 text-amber-800 border-amber-300"
+                    }`}>
+                      {dossierRecord.verification_status || "PENDING_VERIFICATION"}
+                    </span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-neutral-50 p-3 rounded font-mono text-xs">
-                  <div>
-                    <span className="text-[10px] text-neutral-500 uppercase block">Capture Status</span>
-                    {dossierRecord.payment_status === "PAID" ? (
-                      <span className="inline-flex items-center space-x-1 text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-300">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                        <span>CAPTURED (PAID)</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Left Column: UPI details & Audit */}
+                  <div className="space-y-3 font-mono text-xs">
+                    <div className="bg-neutral-50 p-3 rounded border border-neutral-200 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-neutral-500 uppercase">Payment Method</span>
+                        <span className="font-bold text-neutral-800">{dossierRecord.payment_method || "UPI Direct (QR)"}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-neutral-500 uppercase">UPI Payee ID</span>
+                        <span className="text-neutral-700 text-[11px] font-mono">bhuvi231297-1@oksbi</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-neutral-500 uppercase">12-Digit UPI UTR</span>
+                        <span className="font-bold text-neutral-950 bg-white px-2 py-0.5 rounded border border-neutral-300 select-all">
+                          {dossierRecord.payment_utr || "NOT PROVIDED"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-neutral-500 uppercase">Amount Due / Paid</span>
+                        <span className="font-bold text-emerald-700 font-outfit text-base">
+                          ₹{(dossierRecord.payment_amount || dossierRecord.total_amount || 0).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-neutral-500 uppercase">Allocated Slot</span>
+                        <span className="font-bold text-amber-800">
+                          {dossierRecord.slot_number ? `SLOT #${String(dossierRecord.slot_number).padStart(2, "0")}` : "PENDING ALLOCATION"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-neutral-500 uppercase">Check-In Status</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          dossierRecord.checkin_status === "CHECKED_IN"
+                            ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                            : "bg-neutral-200 text-neutral-700"
+                        }`}>
+                          {dossierRecord.checkin_status === "CHECKED_IN" ? "CHECKED-IN ON TRAIL ✓" : "NOT CHECKED IN"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Marshall Decision & Actions */}
+                    <div className="p-3 bg-amber-50/70 border border-amber-200 rounded space-y-2">
+                      <span className="text-[11px] font-bold text-neutral-900 block font-outfit uppercase">
+                        CHIEF MARSHAL DECISION &amp; PASS ACTIVATION
                       </span>
-                    ) : (
-                      <span className="inline-flex items-center space-x-1 text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-300">
-                        <Clock className="w-3 h-3 text-amber-600" />
-                        <span>{dossierRecord.payment_status || "PENDING"}</span>
-                      </span>
-                    )}
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-neutral-500 uppercase block">Captured Amount</span>
-                    <span className="font-bold text-neutral-900 font-outfit text-sm">
-                      ₹{(dossierRecord.payment_amount || dossierRecord.total_amount || 0).toLocaleString()}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-neutral-500 uppercase block">Payment Method</span>
-                    <span className="text-neutral-900 font-semibold">{dossierRecord.payment_method || "N/A"}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-neutral-500 uppercase block">Payment Timestamp</span>
-                    <span className="text-neutral-900 text-[11px]">
-                      {dossierRecord.payment_time ? new Date(dossierRecord.payment_time).toLocaleString("en-IN") : "N/A"}
-                    </span>
-                  </div>
-                </div>
+                      <p className="text-[11px] text-neutral-600 font-sans">
+                        Approving marks payment as received, assigns official slot number, unlocks driver ticket pass, and emails notification.
+                      </p>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {dossierRecord.verification_status !== "VERIFIED" ? (
+                          <button
+                            onClick={() => handleApproveEntry(dossierRecord.id)}
+                            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold font-mono flex items-center space-x-1.5 shadow-sm transition-all"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>APPROVE &amp; ISSUE PASS</span>
+                          </button>
+                        ) : (
+                          <div className="flex items-center space-x-2 text-emerald-800 font-bold text-xs bg-emerald-50 px-3 py-1.5 rounded border border-emerald-300">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <span>ENTRY PASS ACTIVE &amp; VERIFIED</span>
+                          </div>
+                        )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-xs pt-1">
-                  <div className="bg-neutral-50 p-2.5 rounded border border-neutral-200">
-                    <span className="text-[10px] text-neutral-500 uppercase block">Cashfree Payment ID / Ref</span>
-                    <span className="text-neutral-900 select-all font-bold">
-                      {dossierRecord.payment_id || "No transaction reference yet"}
-                    </span>
-                  </div>
-                  <div className="bg-neutral-50 p-2.5 rounded border border-neutral-200">
-                    <span className="text-[10px] text-neutral-500 uppercase block">Cashfree Order ID</span>
-                    <span className="text-neutral-900 select-all font-bold">
-                      {dossierRecord.payment_order_id || "Not assigned"}
-                    </span>
-                  </div>
-                </div>
+                        <button
+                          onClick={() => handleSendWhatsAppTicket(dossierRecord)}
+                          className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold font-mono flex items-center space-x-1.5 shadow-sm transition-all"
+                          title="Send official ticket pass with QR code link to driver via WhatsApp"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span>SEND TICKET IN WHATSAPP</span>
+                        </button>
 
-                {/* Quick Payment Status Toggle for Admin */}
-                <div className="flex items-center justify-between pt-2 border-t border-neutral-100 text-[11px] font-mono">
-                  <span className="text-neutral-500">Manual Payment Status Override:</span>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => handlePaymentStatusChange(dossierRecord.id, "PAID")}
-                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold"
-                    >
-                      Mark Captured (Paid)
-                    </button>
-                    <button
-                      onClick={() => handlePaymentStatusChange(dossierRecord.id, "PENDING")}
-                      className="px-2.5 py-1 bg-neutral-200 hover:bg-neutral-300 text-neutral-800 rounded text-[10px] font-bold"
-                    >
-                      Reset to Pending
-                    </button>
+                        <Link
+                          href={`/my-ticket?search=${encodeURIComponent(dossierRecord.registration_code || dossierRecord.id.toString())}`}
+                          target="_blank"
+                          className="px-3 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded text-xs font-mono font-bold flex items-center space-x-1.5"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>OPEN TICKET PASS</span>
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Payment Screenshot Preview & Direct Download */}
+                  <div className="border border-neutral-200 bg-neutral-50 rounded p-3 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-mono font-bold text-neutral-700 uppercase">
+                          UPI TRANSACTION SCREENSHOT
+                        </span>
+                        {dossierRecord.payment_screenshot_url && (
+                          <a
+                            href={dossierRecord.payment_screenshot_url}
+                            download={`UPI_Receipt_${dossierRecord.registration_code || dossierRecord.id}.jpg`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-2.5 py-1 bg-white hover:bg-neutral-100 border border-neutral-300 rounded text-[10px] font-mono font-bold text-neutral-800 flex items-center space-x-1 shadow-xs"
+                          >
+                            <Download className="w-3 h-3 text-amber-700" />
+                            <span>Download Receipt</span>
+                          </a>
+                        )}
+                      </div>
+
+                      {dossierRecord.payment_screenshot_url ? (
+                        <div className="relative group rounded border border-neutral-300 overflow-hidden bg-black/5 aspect-[4/3] flex items-center justify-center">
+                          <img
+                            src={dossierRecord.payment_screenshot_url}
+                            alt="UPI Payment Proof"
+                            className="max-h-full max-w-full object-contain"
+                          />
+                          <a
+                            href={dossierRecord.payment_screenshot_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-mono font-bold space-x-1.5 transition-opacity"
+                          >
+                            <Eye className="w-4 h-4" />
+                            <span>View Full Resolution</span>
+                          </a>
+                        </div>
+                      ) : (
+                        <div className="h-44 border-2 border-dashed border-neutral-300 rounded flex flex-col items-center justify-center text-neutral-400">
+                          <ImageIcon className="w-8 h-8 mb-1" />
+                          <span className="text-[10px] font-mono">No Screenshot Uploaded</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-3 pt-2 border-t border-neutral-200 flex items-center justify-between text-[11px] font-mono">
+                      <span className="text-neutral-500">Manual Status Toggle:</span>
+                      <div className="flex space-x-1.5">
+                        <button
+                          onClick={() => handlePaymentStatusChange(dossierRecord.id, "PAID")}
+                          className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold"
+                        >
+                          Mark Paid
+                        </button>
+                        <button
+                          onClick={() => handlePaymentStatusChange(dossierRecord.id, "PENDING")}
+                          className="px-2 py-0.5 bg-neutral-200 hover:bg-neutral-300 text-neutral-800 rounded text-[10px] font-bold"
+                        >
+                          Reset Pending
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2202,15 +2607,47 @@ export default function AdminPage() {
               {dossierRecord.passengers && dossierRecord.passengers.length > 0 && (
                 <div>
                   <h4 className="font-mono text-xs font-bold text-amber-800 uppercase mb-2">
-                    2. CREW PASSENGERS ({dossierRecord.passengers.length})
+                    2. CREW PASSENGERS &amp; ID PROOFS ({dossierRecord.passengers.length})
                   </h4>
                   <div className="space-y-2">
-                    {dossierRecord.passengers.map((p, idx) => (
-                      <div key={idx} className="p-2.5 bg-neutral-50 rounded border border-neutral-200 flex justify-between font-mono text-xs">
-                        <span>Passenger {idx + 1}: <strong>{p.name}</strong> ({p.gender}, Age: {p.age})</span>
-                        <span className="text-neutral-500">Rel: {p.relationship} | {p.mobile}</span>
-                      </div>
-                    ))}
+                    {dossierRecord.passengers.map((p: any, idx: number) => {
+                      const idUrl = p.idProofUrl || p.id_proof_url;
+                      return (
+                        <div key={idx} className="p-3 bg-neutral-50 rounded border border-neutral-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 font-mono text-xs">
+                          <div>
+                            <span>Passenger {idx + 1}: <strong>{p.name}</strong> ({p.gender || "N/A"}, Age: {p.age || "N/A"})</span>
+                            <div className="text-neutral-500 text-[11px] mt-0.5">
+                              Relation: {p.relationship || "Crew"} | Phone: {p.mobile || "N/A"}
+                            </div>
+                          </div>
+                          {idUrl ? (
+                            <div className="flex items-center space-x-2">
+                              <a
+                                href={idUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-2 py-1 bg-white hover:bg-neutral-100 border border-neutral-300 rounded text-[10px] text-neutral-800 flex items-center space-x-1"
+                              >
+                                <Eye className="w-3 h-3 text-neutral-500" />
+                                <span>View ID</span>
+                              </a>
+                              <a
+                                href={idUrl}
+                                download={`Passenger_${idx + 1}_ID.jpg`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-2 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded text-[10px] text-amber-800 font-bold flex items-center space-x-1"
+                              >
+                                <Download className="w-3 h-3 text-amber-700" />
+                                <span>Download ID</span>
+                              </a>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-neutral-400 italic">No ID proof attached</span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -2239,8 +2676,51 @@ export default function AdminPage() {
 
                 {dossierRecord.modifications && (
                   <div className="mt-2 p-3 bg-neutral-50 rounded text-xs font-mono">
-                    <span className="text-[10px] text-neutral-500 uppercase block mb-1">ARMOR & MODS:</span>
+                    <span className="text-[10px] text-neutral-500 uppercase block mb-1">ARMOR &amp; MODS:</span>
                     <span>{dossierRecord.modifications}</span>
+                  </div>
+                )}
+
+                {/* Modification Photos Preview & Download */}
+                {(dossierRecord.modification_details as any)?.photos && (
+                  <div className="mt-3">
+                    <span className="text-[10px] font-mono text-neutral-500 uppercase block mb-2 font-bold">
+                      RIG MODIFICATION PHOTOS
+                    </span>
+                    <div className="grid grid-cols-3 gap-3">
+                      {(["front", "rear", "side"] as const).map((view) => {
+                        const photoUrl = (dossierRecord.modification_details as any)?.photos?.[view];
+                        if (!photoUrl) return null;
+                        return (
+                          <div key={view} className="p-2 bg-neutral-50 rounded border border-neutral-200">
+                            <span className="text-[9px] font-mono uppercase text-neutral-500 block mb-1">
+                              {view.toUpperCase()} VIEW
+                            </span>
+                            <div className="aspect-video bg-neutral-200 rounded overflow-hidden relative group">
+                              <img src={photoUrl} alt={`${view} photo`} className="w-full h-full object-cover" />
+                              <a
+                                href={photoUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-mono font-bold transition-opacity"
+                              >
+                                View
+                              </a>
+                            </div>
+                            <a
+                              href={photoUrl}
+                              download={`Rig_${view}_view.jpg`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-1.5 text-[10px] font-mono text-amber-700 hover:underline flex items-center justify-center space-x-1"
+                            >
+                              <Download className="w-2.5 h-2.5" />
+                              <span>Download</span>
+                            </a>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
@@ -2248,7 +2728,7 @@ export default function AdminPage() {
               {/* Safety & Medical */}
               {dossierRecord.safety_experience && (
                 <div>
-                  <h4 className="font-mono text-xs font-bold text-amber-800 uppercase mb-2">4. SAFETY & MEDICAL</h4>
+                  <h4 className="font-mono text-xs font-bold text-amber-800 uppercase mb-2">4. SAFETY &amp; MEDICAL</h4>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-neutral-50 p-3 rounded font-mono">
                     <div>
                       <span className="text-[10px] text-neutral-500 uppercase block">EXP LEVEL</span>
@@ -2273,44 +2753,97 @@ export default function AdminPage() {
               {/* Documents & Scrutineering Files */}
               {dossierRecord.documents && (
                 <div>
-                  <h4 className="font-mono text-xs font-bold text-amber-800 uppercase mb-2">5. UPLOADED VEHICLE DOCUMENTS</h4>
+                  <h4 className="font-mono text-xs font-bold text-amber-800 uppercase mb-2">5. VEHICLE SCRUTINEERING DOCUMENTS</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-neutral-50 p-3 rounded font-mono text-xs">
-                    <div className="p-2 bg-white rounded border border-neutral-200">
-                      <span className="text-[10px] text-neutral-500 uppercase block">RC CERTIFICATE</span>
-                      <span className="font-bold text-neutral-900 block truncate">
-                        {dossierRecord.documents.rc_file || (dossierRecord.documents.rc_uploaded ? "RC Verified" : "Not Provided")}
-                      </span>
-                      {dossierRecord.documents.rc_url && (
-                        <a href={dossierRecord.documents.rc_url} target="_blank" rel="noreferrer" className="text-amber-700 hover:underline text-[10px] flex items-center space-x-1 mt-1">
-                          <ExternalLink className="w-2.5 h-2.5" />
-                          <span>View Document</span>
-                        </a>
+                    <div className="p-3 bg-white rounded border border-neutral-200 flex flex-col justify-between">
+                      <div>
+                        <span className="text-[10px] text-neutral-500 uppercase block">RC CERTIFICATE</span>
+                        <span className="font-bold text-neutral-900 block truncate">
+                          {dossierRecord.documents.rc_file || (dossierRecord.documents.rc_uploaded ? "RC Verified" : "Not Provided")}
+                        </span>
+                      </div>
+                      {dossierRecord.documents.rc_url ? (
+                        <div className="flex items-center space-x-2 mt-2 pt-2 border-t border-neutral-100">
+                          <a href={dossierRecord.documents.rc_url} target="_blank" rel="noreferrer" className="text-amber-700 hover:underline text-[10px] flex items-center space-x-1">
+                            <ExternalLink className="w-2.5 h-2.5" />
+                            <span>View</span>
+                          </a>
+                          <span className="text-neutral-300">•</span>
+                          <a
+                            href={dossierRecord.documents.rc_url}
+                            download={`RC_${dossierRecord.registration_code || dossierRecord.id}.pdf`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-neutral-800 hover:text-amber-800 text-[10px] flex items-center space-x-1 font-bold"
+                          >
+                            <Download className="w-2.5 h-2.5 text-neutral-500" />
+                            <span>Download RC</span>
+                          </a>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-neutral-400 mt-2 block italic">No file attached</span>
                       )}
                     </div>
-                    <div className="p-2 bg-white rounded border border-neutral-200">
-                      <span className="text-[10px] text-neutral-500 uppercase block">INSURANCE CERTIFICATE</span>
-                      <span className="font-bold text-neutral-900 block truncate">
-                        {dossierRecord.documents.insurance_company || "Policy on Record"}
-                      </span>
-                      <span className="text-[10px] text-neutral-500 block">Exp: {dossierRecord.documents.insurance_expiry || "Valid"}</span>
-                      {dossierRecord.documents.insurance_url && (
-                        <a href={dossierRecord.documents.insurance_url} target="_blank" rel="noreferrer" className="text-amber-700 hover:underline text-[10px] flex items-center space-x-1 mt-1">
-                          <ExternalLink className="w-2.5 h-2.5" />
-                          <span>View Policy</span>
-                        </a>
+
+                    <div className="p-3 bg-white rounded border border-neutral-200 flex flex-col justify-between">
+                      <div>
+                        <span className="text-[10px] text-neutral-500 uppercase block">INSURANCE POLICY</span>
+                        <span className="font-bold text-neutral-900 block truncate">
+                          {dossierRecord.documents.insurance_company || "Policy on Record"}
+                        </span>
+                        <span className="text-[10px] text-neutral-500 block">Exp: {dossierRecord.documents.insurance_expiry || "Valid"}</span>
+                      </div>
+                      {dossierRecord.documents.insurance_url ? (
+                        <div className="flex items-center space-x-2 mt-2 pt-2 border-t border-neutral-100">
+                          <a href={dossierRecord.documents.insurance_url} target="_blank" rel="noreferrer" className="text-amber-700 hover:underline text-[10px] flex items-center space-x-1">
+                            <ExternalLink className="w-2.5 h-2.5" />
+                            <span>View</span>
+                          </a>
+                          <span className="text-neutral-300">•</span>
+                          <a
+                            href={dossierRecord.documents.insurance_url}
+                            download={`Insurance_${dossierRecord.registration_code || dossierRecord.id}.pdf`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-neutral-800 hover:text-amber-800 text-[10px] flex items-center space-x-1 font-bold"
+                          >
+                            <Download className="w-2.5 h-2.5 text-neutral-500" />
+                            <span>Download Policy</span>
+                          </a>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-neutral-400 mt-2 block italic">No file attached</span>
                       )}
                     </div>
-                    <div className="p-2 bg-white rounded border border-neutral-200">
-                      <span className="text-[10px] text-neutral-500 uppercase block">PUC CERTIFICATE</span>
-                      <span className="font-bold text-neutral-900 block truncate">
-                        {dossierRecord.documents.puc_number || "PUC on Record"}
-                      </span>
-                      <span className="text-[10px] text-neutral-500 block">Exp: {dossierRecord.documents.puc_expiry || "Valid"}</span>
-                      {dossierRecord.documents.puc_url && (
-                        <a href={dossierRecord.documents.puc_url} target="_blank" rel="noreferrer" className="text-amber-700 hover:underline text-[10px] flex items-center space-x-1 mt-1">
-                          <ExternalLink className="w-2.5 h-2.5" />
-                          <span>View PUC</span>
-                        </a>
+
+                    <div className="p-3 bg-white rounded border border-neutral-200 flex flex-col justify-between">
+                      <div>
+                        <span className="text-[10px] text-neutral-500 uppercase block">PUC CERTIFICATE</span>
+                        <span className="font-bold text-neutral-900 block truncate">
+                          {dossierRecord.documents.puc_number || "PUC on Record"}
+                        </span>
+                        <span className="text-[10px] text-neutral-500 block">Exp: {dossierRecord.documents.puc_expiry || "Valid"}</span>
+                      </div>
+                      {dossierRecord.documents.puc_url ? (
+                        <div className="flex items-center space-x-2 mt-2 pt-2 border-t border-neutral-100">
+                          <a href={dossierRecord.documents.puc_url} target="_blank" rel="noreferrer" className="text-amber-700 hover:underline text-[10px] flex items-center space-x-1">
+                            <ExternalLink className="w-2.5 h-2.5" />
+                            <span>View</span>
+                          </a>
+                          <span className="text-neutral-300">•</span>
+                          <a
+                            href={dossierRecord.documents.puc_url}
+                            download={`PUC_${dossierRecord.registration_code || dossierRecord.id}.pdf`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-neutral-800 hover:text-amber-800 text-[10px] flex items-center space-x-1 font-bold"
+                          >
+                            <Download className="w-2.5 h-2.5 text-neutral-500" />
+                            <span>Download PUC</span>
+                          </a>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-neutral-400 mt-2 block italic">No file attached</span>
                       )}
                     </div>
                   </div>
@@ -2329,7 +2862,16 @@ export default function AdminPage() {
               </div>
             </div>
 
-            <div className="px-6 py-3 border-t border-neutral-200 bg-sand-50 flex justify-end">
+            <div className="px-6 py-3 border-t border-neutral-200 bg-sand-50 flex items-center justify-between">
+              <button
+                onClick={() => handleSendWhatsAppTicket(dossierRecord)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-mono font-bold uppercase flex items-center space-x-1.5 shadow-sm transition-colors"
+                title="Send official ticket with QR code to driver via WhatsApp"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>Send Ticket in WhatsApp</span>
+              </button>
+
               <button
                 onClick={() => setDossierRecord(null)}
                 className="px-5 py-2 bg-neutral-900 text-white rounded text-xs font-mono uppercase"

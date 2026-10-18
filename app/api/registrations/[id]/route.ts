@@ -19,6 +19,24 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: "Registration not found" }, { status: 404 });
     }
 
+    // If verified or confirmed, dispatch approval email to driver
+    if (
+      (updates.verification_status === "VERIFIED" || updates.status === "SLOT_CONFIRMED") &&
+      updated.email
+    ) {
+      try {
+        const { sendTicketApprovedEmail } = await import("@/lib/email");
+        await sendTicketApprovedEmail({
+          toEmail: updated.email,
+          driverName: updated.driver_name,
+          registrationCode: updated.registration_code || `MAT26-${updated.id}`,
+          slotNumber: updated.slot_number || `SLOT-${updated.id}`,
+        });
+      } catch (e) {
+        console.error("Failed to send ticket approval email in PATCH route:", e);
+      }
+    }
+
     return NextResponse.json({ success: true, data: updated });
   } catch (error: any) {
     console.error("PATCH /api/registrations/[id] error:", error);

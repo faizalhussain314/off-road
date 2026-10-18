@@ -21,11 +21,12 @@ export function Navbar() {
   }, []);
 
   const navLinks = [
-    { label: "HOME", href: "#" },
+    { label: "HOME", href: "/" },
     { label: "THE TRAIL", href: "#trail" },
     { label: "OBSTACLES", href: "#obstacles" },
+    { label: "GALLERY", href: "#gallery" },
     { label: "EXPERIENCE", href: "#experience" },
-    { label: "SPONSORS", href: "#sponsors" },
+    { label: "MY TICKET", href: "/my-ticket" },
     { label: "REGISTRATION", href: "#registration" },
     { label: "CONTACT", href: "#contact" },
   ];
@@ -42,7 +43,7 @@ export function Navbar() {
         <div className="max-w-7xl mx-auto px-6 sm:px-8 flex items-center justify-between">
           {/* Brand Logo */}
           <a
-            href="#"
+            href="/"
             className="flex items-center space-x-3 group focus:outline-none"
             aria-label="MadProTek Home"
           >
@@ -77,10 +78,10 @@ export function Navbar() {
           {/* Action CTA */}
           <div className="hidden sm:flex items-center space-x-3">
             <a
-              href="#sponsors"
-              className="inline-flex items-center px-4 py-2 border border-neutral-300 hover:border-amber-600 text-neutral-800 font-syne font-bold text-xs tracking-wider uppercase transition-colors"
+              href="/my-ticket"
+              className="inline-flex items-center px-3.5 py-2 border border-neutral-300 hover:border-amber-600 text-neutral-800 font-syne font-bold text-xs tracking-wider uppercase transition-colors"
             >
-              <span>SPONSOR</span>
+              <span>MY TICKET</span>
             </a>
             <a
               href="#registration"

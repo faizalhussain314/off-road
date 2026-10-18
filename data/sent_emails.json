@@ -1,0 +1,30 @@
+[
+  {
+    "type": "PASSWORD_SETUP",
+    "to": "testdevfaizal04@gmail.com",
+    "driverName": "fghj",
+    "registrationCode": "MAT26-0013",
+    "setupUrl": "http://localhost:3000/set-password?token=tok_1792350261632_6bgfnjr6&email=testdevfaizal04%40gmail.com",
+    "sentViaSmtp": false,
+    "error": "SMTP credentials (user/password) not configured.",
+    "timestamp": "2026-10-18T19:04:21.752Z"
+  },
+  {
+    "type": "TICKET_APPROVED",
+    "to": "faizalhussain314@gmail.com",
+    "driverName": "Faizal Hussain",
+    "registrationCode": "MAT26-0012",
+    "slotNumber": 1,
+    "sentViaSmtp": false,
+    "timestamp": "2026-10-18T15:40:18.965Z"
+  },
+  {
+    "type": "PASSWORD_SETUP",
+    "to": "faizalhussain314@gmail.com",
+    "driverName": "Faizal Hussain",
+    "registrationCode": "MAT26-0012",
+    "setupUrl": "http://localhost:3000/set-password?token=tok_1792337929580_hax9e9kw&email=faizalhussain314%40gmail.com",
+    "sentViaSmtp": false,
+    "timestamp": "2026-10-18T15:38:49.782Z"
+  }
+]

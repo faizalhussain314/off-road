@@ -26,7 +26,15 @@ import {
   Lock,
   MessageSquare,
   Tag,
+  Compass,
+  HeartPulse,
+  Copy,
+  ExternalLink,
+  QrCode,
+  Image as ImageIcon,
+  ShieldCheck,
 } from "lucide-react";
+import Link from "next/link";
 import { GoogleCaptcha } from "@/components/ui/GoogleCaptcha";
 
 interface Passenger {
@@ -95,12 +103,15 @@ export function Registration() {
     age: "",
     gender: "",
     mobile: "",
+    whatsapp: "",
+    email: "",
     city: "",
     relationship: "Primary Driver",
     idProofType: "",
     idProofUrl: "",
     idProofName: "",
   });
+  const [whatsappSameAsPhone, setWhatsappSameAsPhone] = useState<boolean>(true);
 
   const [passengers, setPassengers] = useState<Passenger[]>([
     {
@@ -206,13 +217,22 @@ export function Registration() {
     discount_amount?: number;
     promo_code?: string;
     driver_name: string;
+    phone?: string;
+    whatsapp?: string;
+    driver_email?: string;
     experience_type: string;
     date: string;
-    payment_id?: string;
     payment_method?: string;
+    payment_utr?: string;
     payment_status?: string;
-    order_id?: string;
+    setup_password_url?: string;
   } | null>(null);
+
+  // UPI Manual Payment state
+  const [paymentScreenshotUrl, setPaymentScreenshotUrl] = useState<string>("");
+  const [paymentScreenshotName, setPaymentScreenshotName] = useState<string>("");
+  const [paymentUtr, setPaymentUtr] = useState<string>("");
+  const [copiedUpi, setCopiedUpi] = useState<boolean>(false);
 
   // Real upload state
   const [uploadingTarget, setUploadingTarget] = useState<string | null>(null);
@@ -366,6 +386,9 @@ export function Registration() {
             pucFileName: file.name,
             pucUrl: data.url,
           }));
+        } else if (targetKey === "payment_screenshot") {
+          setPaymentScreenshotUrl(data.url);
+          setPaymentScreenshotName(file.name);
         }
       }
     } catch (err) {
@@ -412,6 +435,11 @@ export function Registration() {
   const validateStep2 = () => {
     if (!driver.fullName.trim()) return "Driver full name is required.";
     if (!driver.mobile.trim()) return "Driver mobile number is required.";
+    const wa = whatsappSameAsPhone ? driver.mobile.trim() : driver.whatsapp.trim();
+    if (!wa) return "Driver WhatsApp number is required to receive notifications.";
+    if (driver.email.trim() && !driver.email.includes("@")) {
+      return "Please enter a valid email address, or leave it blank.";
+    }
     if (!driver.age.trim()) return "Driver age is required.";
     if (!driver.city.trim()) return "Driver city is required.";
     return null;
@@ -458,10 +486,20 @@ export function Registration() {
     });
   };
 
-  // Submission handler with Cashfree Payment Gateway
+  // Submission handler with Direct UPI QR Payment & Screenshot
   const handleFinalSubmit = async () => {
     if (!pricingConfig.online_registration_open) {
       setErrorMessage("Registration is currently closed by the event marshals.");
+      return;
+    }
+
+    if (!paymentScreenshotUrl) {
+      setErrorMessage("Please upload your UPI payment confirmation screenshot before submitting.");
+      return;
+    }
+
+    if (!paymentUtr.trim()) {
+      setErrorMessage("Please enter the 12-digit UPI UTR / Transaction Reference Number.");
       return;
     }
 
@@ -474,11 +512,12 @@ export function Registration() {
     setErrorMessage("");
 
     const totalAmount = calculateTotal();
+    const waNumber = whatsappSameAsPhone ? driver.mobile.trim() : (driver.whatsapp.trim() || driver.mobile.trim());
     const payload = {
-      driver_name: driver.fullName,
-      phone: driver.mobile,
-      whatsapp: driver.mobile,
-      email: "",
+      driver_name: driver.fullName.trim(),
+      phone: driver.mobile.trim(),
+      whatsapp: waNumber,
+      email: driver.email.trim(),
       driver_age: driver.age,
       driver_gender: driver.gender,
       driver_city: driver.city,
@@ -527,125 +566,52 @@ export function Registration() {
       },
 
       safety_experience: safety,
+      payment_screenshot_url: paymentScreenshotUrl,
+      payment_utr: paymentUtr.trim(),
+      payment_method: "UPI (Google Pay / PhonePe / Paytm)",
+      payment_gateway: "UPI_DIRECT",
+      payment_amount: totalAmount,
+      payment_status: "PENDING",
+      verification_status: "PENDING_VERIFICATION",
+      status: "SCRUTINEERING_REVIEW",
       captcha_token: captchaToken,
       captcha_verified: true,
       source: "ONLINE_WEB",
     };
 
     try {
-      // 1. Create Order via Cashfree API
-      const res = await fetch("/api/cashfree/create-order", {
+      const res = await fetch("/api/registrations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      const orderData = await res.json();
-      if (!res.ok || !orderData.success) {
-        throw new Error(orderData.error || "Failed to initiate payment session with Cashfree.");
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || "Failed to submit registration.");
       }
 
-      const {
-        order_id,
-        registration_id,
-        registration_code,
-        payment_session_id,
-        is_mock,
-        environment,
-      } = orderData;
-
-      // 2. Handle Mock / Test Sandbox mode if Cashfree API credentials are not set
-      if (is_mock) {
-        const verifyRes = await fetch("/api/cashfree/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ order_id, registration_id }),
-        });
-        const verifyData = await verifyRes.json();
-
-        setConfirmedData({
-          registration_code: registration_code || "MAT26-0001",
-          total_amount: totalAmount,
-          discount_amount: appliedPromo ? appliedPromo.discount : 0,
-          promo_code: appliedPromo ? appliedPromo.code : undefined,
-          driver_name: payload.driver_name,
-          experience_type: payload.experience_type,
-          date: payload.experience_date,
-          payment_id: verifyData.payment_id || `CF_TEST_${Date.now()}`,
-          payment_method: verifyData.payment_method || "UPI (Sandbox Test)",
-          payment_status: "PAID",
-          order_id,
-        });
-        setCurrentStep(7);
-        setIsSubmitting(false);
-        return;
-      }
-
-      // 3. Real Cashfree SDK Checkout Flow
-      const CashfreeSDK = await loadCashfreeScript();
-      const cashfreeInstance = CashfreeSDK({
-        mode: environment === "PRODUCTION" ? "production" : "sandbox",
+      setConfirmedData({
+        registration_code: result.data.registration_code || `MAT26-${result.data.id}`,
+        total_amount: totalAmount,
+        discount_amount: appliedPromo ? appliedPromo.discount : 0,
+        promo_code: appliedPromo ? appliedPromo.code : undefined,
+        driver_name: payload.driver_name,
+        phone: payload.phone,
+        whatsapp: waNumber,
+        driver_email: payload.email,
+        experience_type: payload.experience_type,
+        date: payload.experience_date,
+        payment_method: "UPI Manual QR Payment",
+        payment_utr: paymentUtr.trim(),
+        payment_status: "SUBMITTED FOR VERIFICATION",
       });
 
-      // Launch Cashfree checkout popup modal
-      cashfreeInstance
-        .checkout({
-          paymentSessionId: payment_session_id,
-          redirectTarget: "_modal",
-        })
-        .then(async (result: any) => {
-          if (result.error) {
-            console.warn("Cashfree checkout error / cancelled:", result.error);
-            setErrorMessage(result.error.message || "Payment cancelled or could not be completed.");
-            setIsSubmitting(false);
-            return;
-          }
-
-          // Verify payment capture with backend
-          try {
-            const verifyRes = await fetch("/api/cashfree/verify", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ order_id, registration_id }),
-            });
-            const verifyData = await verifyRes.json();
-
-            if (verifyData.verified && verifyData.payment_status === "PAID") {
-              setConfirmedData({
-                registration_code: registration_code || "MAT26-0001",
-                total_amount: totalAmount,
-                discount_amount: appliedPromo ? appliedPromo.discount : 0,
-                promo_code: appliedPromo ? appliedPromo.code : undefined,
-                driver_name: payload.driver_name,
-                experience_type: payload.experience_type,
-                date: payload.experience_date,
-                payment_id: verifyData.payment_id,
-                payment_method: verifyData.payment_method || "Online Payment",
-                payment_status: "PAID",
-                order_id,
-              });
-              setCurrentStep(7);
-            } else {
-              setErrorMessage(
-                verifyData.error ||
-                  "Payment capture verification is pending. If money was debited, your slot will confirm automatically via webhook."
-              );
-            }
-          } catch (err: any) {
-            console.error("Verification failed:", err);
-            setErrorMessage("Payment verification failed. Please contact event marshals.");
-          } finally {
-            setIsSubmitting(false);
-          }
-        })
-        .catch((err: any) => {
-          console.error("Cashfree SDK invocation error:", err);
-          setErrorMessage(err.message || "Could not launch Cashfree checkout.");
-          setIsSubmitting(false);
-        });
+      setCurrentStep(7);
     } catch (err: any) {
-      console.error(err);
-      setErrorMessage(err.message || "Payment processing error occurred. Please try again.");
+      console.error("Submission error:", err);
+      setErrorMessage(err.message || "Failed to submit registration. Please try again.");
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -1173,8 +1139,66 @@ export function Registration() {
                           <input
                             type="text"
                             value={driver.mobile}
-                            onChange={(e) => setDriver({ ...driver, mobile: e.target.value })}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setDriver({
+                                ...driver,
+                                mobile: val,
+                                whatsapp: whatsappSameAsPhone ? val : driver.whatsapp,
+                              });
+                            }}
                             placeholder="+91 XXXXX XXXXX"
+                            className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-xs text-neutral-900 focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[11px] font-medium text-neutral-700">
+                              WhatsApp Number <span className="text-red-500">*</span>
+                            </label>
+                            <label className="flex items-center space-x-1 cursor-pointer text-[10px] text-emerald-700 font-bold select-none">
+                              <input
+                                type="checkbox"
+                                checked={whatsappSameAsPhone}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setWhatsappSameAsPhone(checked);
+                                  if (checked) {
+                                    setDriver((prev) => ({ ...prev, whatsapp: prev.mobile }));
+                                  }
+                                }}
+                                className="rounded border-neutral-300 text-emerald-600 focus:ring-0 w-3 h-3"
+                              />
+                              <span>Same as Mobile</span>
+                            </label>
+                          </div>
+                          <input
+                            type="text"
+                            disabled={whatsappSameAsPhone}
+                            value={whatsappSameAsPhone ? driver.mobile : driver.whatsapp}
+                            onChange={(e) => setDriver({ ...driver, whatsapp: e.target.value })}
+                            placeholder="+91 XXXXX XXXXX"
+                            className={`w-full px-3 py-2 border rounded-lg text-xs text-neutral-900 focus:outline-none focus:border-emerald-500 ${
+                              whatsappSameAsPhone
+                                ? "bg-neutral-100 border-neutral-200 text-neutral-600 cursor-not-allowed"
+                                : "bg-white border-neutral-300"
+                            }`}
+                          />
+                          <span className="text-[10px] text-emerald-700 font-mono mt-0.5 block">
+                            QR ticket &amp; verification updates sent via WhatsApp
+                          </span>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-neutral-700 mb-1">
+                            Email Address <span className="text-neutral-400 font-normal">(Optional)</span>
+                          </label>
+                          <input
+                            type="email"
+                            value={driver.email}
+                            onChange={(e) => setDriver({ ...driver, email: e.target.value })}
+                            placeholder="driver@example.com"
                             className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-xs text-neutral-900 focus:outline-none focus:border-amber-500"
                           />
                         </div>
@@ -2487,16 +2511,127 @@ export function Registration() {
                       </span>
                     </div>
 
-                    {/* Cashfree PG Trust & Security Banner */}
-                    <div className="mt-2 pt-2 border-t border-neutral-200/60 flex flex-wrap items-center justify-between text-[11px] text-neutral-500">
-                      <div className="flex items-center space-x-1.5 text-neutral-700 font-medium">
-                        <Lock className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Cashfree 256-bit Encrypted Checkout</span>
+                    {/* UPI QR Payment Block */}
+                    <div className="mt-4 p-4 sm:p-5 rounded-xl border-2 border-amber-500/40 bg-white space-y-4 shadow-sm">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-neutral-200 gap-2">
+                        <div>
+                          <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                            OFFICIAL PAYMENT METHOD
+                          </span>
+                          <h4 className="font-outfit font-black text-base sm:text-lg text-neutral-900 mt-1">
+                            UPI INSTANT PAYMENT
+                          </h4>
+                        </div>
+                        <div className="flex items-center space-x-1 text-[11px] font-mono text-neutral-600 bg-neutral-100 px-2.5 py-1 rounded">
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Direct Bank Settlement</span>
+                        </div>
                       </div>
-                      <div className="flex items-center space-x-2 text-[10px] font-mono font-semibold text-neutral-600 mt-1 sm:mt-0">
-                        <span className="bg-white px-1.5 py-0.5 rounded border border-neutral-200">UPI / QR</span>
-                        <span className="bg-white px-1.5 py-0.5 rounded border border-neutral-200">CARDS</span>
-                        <span className="bg-white px-1.5 py-0.5 rounded border border-neutral-200">NETBANKING</span>
+
+                      {/* QR Code + Payment Instructions Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center">
+                        {/* Left: QR Code Showcase */}
+                        <div className="md:col-span-5 flex flex-col items-center justify-center p-4 bg-sand-50 rounded-xl border border-neutral-200 text-center">
+                          <div className="p-2 bg-white rounded-lg border border-neutral-300 shadow-sm inline-block">
+                            <img
+                              src="/images/upi-qr.jpeg"
+                              alt="UPI Payment QR Code"
+                              className="w-48 h-auto object-contain rounded"
+                            />
+                          </div>
+
+                          <div className="mt-3 space-y-1 w-full">
+                            <span className="text-[10px] font-mono text-neutral-500 uppercase block">
+                              Payee: Bhuvaneshwari Shanmugam
+                            </span>
+                            <div className="flex items-center justify-center space-x-1.5 bg-white border border-neutral-300 px-2.5 py-1 rounded">
+                              <span className="font-mono text-xs font-bold text-neutral-900 select-all">
+                                bhuvi231297-1@oksbi
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText("bhuvi231297-1@oksbi");
+                                  setCopiedUpi(true);
+                                  setTimeout(() => setCopiedUpi(false), 2000);
+                                }}
+                                className="text-amber-700 hover:text-amber-800 p-0.5"
+                                title="Copy UPI ID"
+                              >
+                                {copiedUpi ? (
+                                  <span className="text-[10px] font-mono text-emerald-700 font-bold">Copied!</span>
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
+                            <span className="text-[10px] font-mono text-neutral-400 block pt-1">
+                              Scan with GPay, PhonePe, Paytm, BHIM, or any UPI App
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Right: Payment Steps & Verification Inputs */}
+                        <div className="md:col-span-7 space-y-3.5">
+                          <div className="bg-amber-50/70 p-3 rounded-lg border border-amber-200 text-xs text-neutral-700 space-y-1">
+                            <div className="font-bold text-amber-900 flex items-center space-x-1">
+                              <span>Total Payable Fee:</span>
+                              <span className="font-outfit text-base text-[#f05a28] font-black">
+                                ₹{calculateTotal().toLocaleString()}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-neutral-600">
+                              Transfer exact fee via UPI app, then fill in the transaction reference and upload the payment confirmation screenshot below.
+                            </p>
+                          </div>
+
+                          {/* 1. Transaction ID / UTR input */}
+                          <div>
+                            <label className="block text-xs font-bold text-neutral-800 mb-1">
+                              UPI Transaction ID / 12-Digit UTR <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={paymentUtr}
+                              onChange={(e) => setPaymentUtr(e.target.value)}
+                              placeholder="e.g. 4289XXXXXXXX / UPI Ref No."
+                              className="w-full px-3 py-2.5 bg-neutral-50 border border-neutral-300 rounded-lg text-xs font-mono font-bold text-neutral-900 focus:outline-none focus:border-amber-500"
+                            />
+                            <span className="text-[10px] text-neutral-500 mt-0.5 block font-mono">
+                              Found on your payment success receipt in Google Pay / PhonePe / Paytm
+                            </span>
+                          </div>
+
+                          {/* 2. Payment Screenshot Upload */}
+                          <div>
+                            <label className="block text-xs font-bold text-neutral-800 mb-1">
+                              Upload Payment Screenshot <span className="text-red-500">*</span>
+                            </label>
+                            <label className="cursor-pointer border-2 border-dashed border-amber-500/50 hover:border-amber-600 rounded-xl p-3 flex items-center justify-between bg-amber-50/30 hover:bg-amber-50/60 transition-colors">
+                              <div className="flex items-center space-x-2.5">
+                                <Upload className="w-4 h-4 text-amber-700 flex-shrink-0" />
+                                <div>
+                                  <span className="text-xs font-bold text-neutral-900 block truncate max-w-[220px]">
+                                    {paymentScreenshotUrl ? (paymentScreenshotName || "Payment Screenshot Uploaded ✓") : "Select Screenshot"}
+                                  </span>
+                                  <span className="text-[10px] text-neutral-500 block">
+                                    {paymentScreenshotUrl ? "Uploaded to Server ✓" : "PNG, JPG up to 15MB"}
+                                  </span>
+                                </div>
+                              </div>
+                              <span className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-semibold">
+                                {paymentScreenshotUrl ? "Replace" : "Upload"}
+                              </span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => handleFileUpload(e, "payment_screenshot")}
+                              />
+                            </label>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2542,12 +2677,12 @@ export function Registration() {
                       {isSubmitting ? (
                         <>
                           <RefreshCw className="w-4 h-4 animate-spin" />
-                          <span>Connecting to Cashfree...</span>
+                          <span>Submitting Registration &amp; Verifying...</span>
                         </>
                       ) : (
                         <>
-                          <CreditCard className="w-4 h-4" />
-                          <span>Pay ₹{calculateTotal().toLocaleString()} via Cashfree</span>
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Submit Registration &amp; Verification Request</span>
                           <ArrowRight className="w-4 h-4 ml-1" />
                         </>
                       )}
@@ -2560,7 +2695,7 @@ export function Registration() {
         )}
 
         {/* ======================================================== */}
-        {/* SCREEN 9: STEP 7 - REGISTRATION CONFIRMED */}
+        {/* SCREEN 9: STEP 7 - REGISTRATION & PAYMENT RECEIVED */}
         {/* ======================================================== */}
         {currentStep === 7 && (
           <div className="relative rounded-2xl overflow-hidden border border-neutral-800 shadow-2xl bg-neutral-950 text-white p-6 sm:p-10 text-center animate-fadeIn">
@@ -2571,21 +2706,73 @@ export function Registration() {
             </div>
 
             {/* Checkmark Circle */}
-            <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-500 text-emerald-400 flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 rounded-full bg-amber-500/20 border-2 border-amber-500 text-amber-400 flex items-center justify-center mx-auto mb-4">
               <Check className="w-8 h-8 stroke-[3]" />
             </div>
 
-            <h2 className="font-outfit text-3xl font-black uppercase text-white tracking-tight">
-              Registration Confirmed!
+            <h2 className="font-outfit text-2xl sm:text-3xl font-black uppercase text-white tracking-tight">
+              Registration &amp; Payment Submitted!
             </h2>
-            <div className="inline-flex items-center space-x-2 px-3 py-1 bg-emerald-950/80 border border-emerald-500/50 rounded-full text-emerald-400 text-xs font-mono font-bold mt-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>PAYMENT CAPTURED • SLOT SECURED</span>
+            <div className="inline-flex items-center space-x-2 px-3 py-1 bg-amber-950/80 border border-amber-500/50 rounded-full text-amber-400 text-xs font-mono font-bold mt-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              <span>UNDER CHIEF MARSHAL VERIFICATION</span>
             </div>
-            <p className="text-neutral-400 text-xs font-sans mt-2">You&apos;re on the Trail for MadProTek Adventure 2026!</p>
+            <p className="text-neutral-400 text-xs font-sans mt-2 max-w-lg mx-auto">
+              Your 4x4 machine details and UPI payment screenshot have been submitted successfully.
+            </p>
 
-            {/* Badge Details Box */}
-            <div className="my-6 max-w-md mx-auto p-5 bg-neutral-900 border border-neutral-800 rounded-xl text-left space-y-3 font-mono text-xs">
+            {/* WhatsApp Verification Notification Banner (USER REQUIREMENT) */}
+            <div className="my-6 max-w-lg mx-auto p-5 sm:p-6 bg-emerald-950/70 border-2 border-emerald-500 rounded-2xl text-left space-y-3.5 shadow-2xl">
+              <div className="flex items-center space-x-2 text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">
+                <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                <MessageSquare className="w-4 h-4 text-emerald-400" />
+                <span>WHATSAPP NOTIFICATION SERVICE</span>
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="font-outfit text-lg sm:text-xl font-black text-white uppercase tracking-tight">
+                  Once payment gets verified you will get notification via WhatsApp
+                </h3>
+                <p className="text-xs text-neutral-300 font-sans leading-relaxed">
+                  Our Chief Marshals are reviewing your UPI transaction (UTR:{" "}
+                  <strong className="text-amber-400 font-mono">{confirmedData?.payment_utr}</strong>). Upon successful verification, your entry pass with the official scannable QR code will be dispatched directly to your WhatsApp number:
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between bg-black/40 border border-emerald-500/50 px-4 py-2.5 rounded-xl">
+                <div className="flex items-center space-x-2">
+                  <div className="w-7 h-7 rounded-full bg-emerald-600/30 flex items-center justify-center text-emerald-400">
+                    <MessageSquare className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-mono text-emerald-400/80 uppercase block">Registered WhatsApp</span>
+                    <span className="font-mono text-sm font-bold text-white select-all">
+                      {confirmedData?.whatsapp || driver.whatsapp || driver.mobile}
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  READY FOR DISPATCH
+                </span>
+              </div>
+
+              <div className="pt-2 flex flex-col sm:flex-row gap-2">
+                <a
+                  href={`https://wa.me/919876543210?text=${encodeURIComponent(
+                    `Hi Marshals, I have registered for 4x4 Adventure Trail 2026. Registration Code: ${confirmedData?.registration_code || ""}, UPI UTR: ${confirmedData?.payment_utr || ""}. Please verify my payment.`
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full inline-flex items-center justify-center space-x-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-syne font-bold text-xs tracking-wider uppercase rounded-lg transition-colors text-center shadow-md"
+                >
+                  <MessageSquare className="w-3.5 h-3.5 text-white" />
+                  <span>MARSHAL DESK WHATSAPP</span>
+                </a>
+              </div>
+            </div>
+
+            {/* Registration Details Summary Box */}
+            <div className="my-6 max-w-lg mx-auto p-5 bg-neutral-900 border border-neutral-800 rounded-xl text-left space-y-3 font-mono text-xs">
               <div className="text-center pb-2 border-b border-neutral-800">
                 <span className="text-[10px] text-neutral-400 uppercase block">Registration ID</span>
                 <span className="font-outfit font-black text-2xl text-amber-500 tracking-wider">
@@ -2599,98 +2786,57 @@ export function Registration() {
               </div>
 
               <div className="flex justify-between">
-                <span className="text-neutral-400">Experience:</span>
-                <span className="text-white font-bold">{confirmedData?.experience_type}</span>
-              </div>
-
-              <div className="flex justify-between">
-                <span className="text-neutral-400">Date:</span>
+                <span className="text-neutral-400">Experience Date:</span>
                 <span className="text-white font-bold">{confirmedData?.date}</span>
               </div>
 
               <div className="flex justify-between">
-                <span className="text-neutral-400">Venue:</span>
-                <span className="text-white font-bold text-right">Urigam Village, Anchetty</span>
+                <span className="text-neutral-400">WhatsApp Number:</span>
+                <span className="text-emerald-400 font-bold select-all">{confirmedData?.whatsapp || driver.whatsapp || driver.mobile}</span>
               </div>
 
-              {/* Cashfree Payment Audit Trail */}
-              <div className="p-2.5 bg-neutral-950/80 rounded border border-emerald-900/60 space-y-1">
-                <div className="flex justify-between text-emerald-400 text-[11px] font-bold">
-                  <span>Cashfree Transaction ID:</span>
-                  <span className="font-mono">{confirmedData?.payment_id || "CF_CAPTURED"}</span>
-                </div>
-                {confirmedData?.payment_method && (
-                  <div className="flex justify-between text-neutral-300 text-[10px]">
-                    <span className="text-neutral-400">Payment Mode:</span>
-                    <span>{confirmedData.payment_method}</span>
-                  </div>
-                )}
-                {confirmedData?.order_id && (
-                  <div className="flex justify-between text-neutral-400 text-[10px]">
-                    <span>Cashfree Order ID:</span>
-                    <span>{confirmedData.order_id}</span>
-                  </div>
-                )}
+              <div className="flex justify-between">
+                <span className="text-neutral-400">UPI Transaction Ref (UTR):</span>
+                <span className="text-amber-400 font-bold select-all">{confirmedData?.payment_utr}</span>
               </div>
 
-              {confirmedData?.promo_code && (
-                <div className="flex justify-between text-emerald-400">
-                  <span>Promo Code:</span>
-                  <span className="font-bold">
-                    {confirmedData.promo_code} (-₹{confirmedData.discount_amount?.toLocaleString()})
-                  </span>
-                </div>
-              )}
+              <div className="flex justify-between">
+                <span className="text-neutral-400">Verification Status:</span>
+                <span className="text-amber-400 font-bold">Pending Admin Audit</span>
+              </div>
 
               <div className="flex justify-between pt-2 border-t border-neutral-800">
-                <span className="text-neutral-400">Total Captured:</span>
+                <span className="text-neutral-400">Total Submitted:</span>
                 <span className="text-emerald-400 font-bold font-outfit text-sm">
                   ₹{confirmedData?.total_amount?.toLocaleString()}
                 </span>
               </div>
             </div>
 
-            {/* What's Next List */}
-            <div className="max-w-md mx-auto text-left space-y-2 mb-8 text-xs text-neutral-300 font-sans">
-              <div className="font-bold text-neutral-200 text-sm mb-2">What&apos;s Next?</div>
+            {/* Next Steps List */}
+            <div className="max-w-lg mx-auto text-left space-y-2 mb-8 text-xs text-neutral-300 font-sans">
+              <div className="font-bold text-neutral-200 text-sm mb-2">What Happens Next?</div>
               <div className="flex items-center space-x-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                <span>Confirmation sent to your WhatsApp &amp; Email</span>
+                <span>Chief Marshals verify your UPI transaction UTR and vehicle documents.</span>
               </div>
               <div className="flex items-center space-x-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                <span>Vehicle verification at event check-in</span>
-              </div>
-              <div className="flex items-center space-x-2.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                <span>Participant kit collection</span>
-              </div>
-              <div className="flex items-center space-x-2.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                <span>Mandatory driver briefing</span>
+                <span>Once payment gets verified, you will receive an instant notification and QR ticket pass via WhatsApp.</span>
               </div>
             </div>
 
             {/* Actions */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="w-full sm:w-auto px-6 py-3 bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center space-x-2"
-              >
-                <Download className="w-4 h-4" />
-                <span>Download Confirmation</span>
-              </button>
-
+            <div className="flex items-center justify-center">
               <button
                 type="button"
                 onClick={() => {
                   setCurrentStep(0);
                   setConfirmedData(null);
                 }}
-                className="w-full sm:w-auto px-6 py-3 bg-[#14532d] hover:bg-[#052e16] text-white rounded-lg text-xs font-bold transition-colors"
+                className="w-full sm:w-auto px-8 py-3 bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-white rounded-lg text-xs font-bold transition-colors"
               >
-                Back to Website
+                Back to Home
               </button>
             </div>
           </div>
