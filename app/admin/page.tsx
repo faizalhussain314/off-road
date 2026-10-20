@@ -218,10 +218,10 @@ export default function AdminPage() {
   }>({
     online_registration_open: true,
     max_slots: 50,
-    price_early_bird: 5999,
+    price_early_bird: 6999,
     price_regular: 6999,
     price_organiser: 1999,
-    price_extreme: 999,
+    price_extreme: 1499,
     price_additional_participant: 699,
     registration_closed_message:
       "Online registrations for 4X4 Adventure Trail 2026 are currently closed. Please contact event marshals for on-spot inquiry or waitlist.",
@@ -292,8 +292,8 @@ export default function AdminPage() {
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authMounted, setAuthMounted] = useState(false);
-  const [usernameInput, setUsernameInput] = useState("admin");
-  const [passwordInput, setPasswordInput] = useState("madprotek2026");
+  const [usernameInput, setUsernameInput] = useState("");
+  const [passwordInput, setPasswordInput] = useState("");
   const [authError, setAuthError] = useState("");
 
   useEffect(() => {
@@ -1091,11 +1091,6 @@ export default function AdminPage() {
               Unlock Command Console
             </button>
           </form>
-
-          <div className="mt-6 pt-6 border-t border-neutral-800 text-xs font-mono text-neutral-400 flex justify-between">
-            <span>Username: <strong className="text-amber-400">admin</strong></span>
-            <span>Password: <strong className="text-amber-400">madprotek2026</strong></span>
-          </div>
         </div>
       </div>
     );
@@ -2094,37 +2089,21 @@ export default function AdminPage() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-mono">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-mono">
                 <div className="p-3 bg-white border border-neutral-200 rounded space-y-1">
                   <label className="block font-bold text-neutral-800 uppercase text-[11px]">
-                    Day 1: Own 4x4 Early Bird (₹)
-                  </label>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm font-bold text-neutral-500">₹</span>
-                    <input
-                      type="number"
-                      value={settings.price_early_bird}
-                      onChange={(e) => setSettings({ ...settings, price_early_bird: Number(e.target.value) })}
-                      className="w-full px-3 py-1.5 border border-neutral-300 rounded font-bold text-neutral-900 text-sm"
-                    />
-                  </div>
-                  <span className="text-[10px] text-neutral-500 block">Default: ₹5,999 (First 10 Vehicles)</span>
-                </div>
-
-                <div className="p-3 bg-white border border-neutral-200 rounded space-y-1">
-                  <label className="block font-bold text-neutral-800 uppercase text-[11px]">
-                    Day 1: Own 4x4 Regular (₹)
+                    Day 1: Own 4x4 Experience (₹)
                   </label>
                   <div className="flex items-center space-x-2">
                     <span className="text-sm font-bold text-neutral-500">₹</span>
                     <input
                       type="number"
                       value={settings.price_regular}
-                      onChange={(e) => setSettings({ ...settings, price_regular: Number(e.target.value) })}
+                      onChange={(e) => setSettings({ ...settings, price_regular: Number(e.target.value), price_early_bird: Number(e.target.value) })}
                       className="w-full px-3 py-1.5 border border-neutral-300 rounded font-bold text-neutral-900 text-sm"
                     />
                   </div>
-                  <span className="text-[10px] text-neutral-500 block">Default: ₹6,999 (Next 10 Vehicles)</span>
+                  <span className="text-[10px] text-neutral-500 block">Standard Fee: ₹6,999 (Vehicle Slot)</span>
                 </div>
 
                 <div className="p-3 bg-white border border-neutral-200 rounded space-y-1">
@@ -2156,7 +2135,7 @@ export default function AdminPage() {
                       className="w-full px-3 py-1.5 border border-neutral-300 rounded font-bold text-neutral-900 text-sm"
                     />
                   </div>
-                  <span className="text-[10px] text-neutral-500 block">Default: ₹999 / Person</span>
+                  <span className="text-[10px] text-neutral-500 block">Default: ₹1,499 / Person</span>
                 </div>
 
                 <div className="p-3 bg-white border border-neutral-200 rounded space-y-1 sm:col-span-2">

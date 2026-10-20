@@ -7,10 +7,10 @@ export async function GET() {
     const isMysql = await checkMysqlConnection();
     const onlineOpen = await getSetting("online_registration_open", "true");
     const maxSlots = await getSetting("max_slots", "50");
-    const priceEarlyBird = await getSetting("price_early_bird", "5999");
+    const priceEarlyBird = await getSetting("price_early_bird", "6999");
     const priceRegular = await getSetting("price_regular", "6999");
     const priceOrganiser = await getSetting("price_organiser", "1999");
-    const priceExtreme = await getSetting("price_extreme", "999");
+    const priceExtreme = await getSetting("price_extreme", "1499");
     const priceAdditional = await getSetting("price_additional_participant", "699");
     const closedMessage = await getSetting(
       "registration_closed_message",
@@ -28,10 +28,10 @@ export async function GET() {
       data: {
         online_registration_open: onlineOpen === "true",
         max_slots: Number(maxSlots) || 50,
-        price_early_bird: Number(priceEarlyBird) || 5999,
+        price_early_bird: Number(priceEarlyBird) || 6999,
         price_regular: Number(priceRegular) || 6999,
         price_organiser: Number(priceOrganiser) || 1999,
-        price_extreme: Number(priceExtreme) || 999,
+        price_extreme: Number(priceExtreme) || 1499,
         price_additional_participant: Number(priceAdditional) || 699,
         registration_closed_message: closedMessage,
         mysql_connected: isMysql,

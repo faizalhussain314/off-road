@@ -63,10 +63,10 @@ export function Registration() {
   const [pricingConfig, setPricingConfig] = useState<PricingConfig>({
     online_registration_open: true,
     max_slots: 50,
-    price_early_bird: 5999,
+    price_early_bird: 6999,
     price_regular: 6999,
     price_organiser: 1999,
-    price_extreme: 999,
+    price_extreme: 1499,
     price_additional_participant: 699,
     registration_closed_message:
       "Online registrations for 4X4 Adventure Trail 2026 are currently closed. Please contact event marshals for waitlist or on-spot inquiry.",
@@ -255,18 +255,24 @@ export function Registration() {
     loadSettings();
   }, []);
 
+  // Day 2 and pricing helpers
+  const isDay2 = !selectedExperience.includes("OWN 4X4");
+  const isExtreme = selectedExperience.includes("EXTREME");
+  const day2PerPersonPrice = isExtreme ? pricingConfig.price_extreme : pricingConfig.price_organiser;
+  const currentAdditionalPrice = isDay2 ? day2PerPersonPrice : pricingConfig.price_additional_participant;
+
   // Dynamic Pricing Calculation based on admin configured prices
   const calculateBaseTotal = () => {
-    let base = pricingConfig.price_regular;
-    if (selectedExperience.includes("OWN 4X4")) {
-      base = pricingTier === "EARLY_BIRD" ? pricingConfig.price_early_bird : pricingConfig.price_regular;
-    } else if (selectedExperience.includes("ORGANISER")) {
-      base = pricingConfig.price_organiser;
+    if (selectedExperience.includes("ORGANISER")) {
+      return (1 + additionalCount) * pricingConfig.price_organiser;
     } else if (selectedExperience.includes("EXTREME")) {
-      base = pricingConfig.price_extreme;
+      return (1 + additionalCount) * pricingConfig.price_extreme;
+    } else {
+      // Day 1: OWN 4X4 EXPERIENCE (Only 6999, removed 5999)
+      const base = pricingConfig.price_regular;
+      const additional = additionalCount * pricingConfig.price_additional_participant;
+      return base + additional;
     }
-    const additional = additionalCount * pricingConfig.price_additional_participant;
-    return base + additional;
   };
 
   const calculateTotal = () => {
@@ -407,7 +413,7 @@ export function Registration() {
         age: "",
         gender: "",
         mobile: "",
-        relationship: "",
+        relationship: isDay2 ? "Co-Passenger" : "",
         idProofType: "",
         idProofUrl: "",
       },
@@ -415,7 +421,7 @@ export function Registration() {
   };
 
   const handleRemovePassenger = (index: number) => {
-    if (passengers.length <= 1) return;
+    if (!isDay2 && passengers.length <= 2) return;
     setPassengers((prev) => prev.filter((_, i) => i !== index));
     if (additionalCount > 0) {
       setAdditionalCount((prev) => prev - 1);
@@ -526,7 +532,11 @@ export function Registration() {
 
       experience_type: selectedExperience,
       experience_date: selectedDate,
-      pricing_tier: pricingTier === "EARLY_BIRD" ? "Early Bird" : "Regular",
+      pricing_tier: isDay2
+        ? isExtreme
+          ? `Extreme Thrill (₹${pricingConfig.price_extreme.toLocaleString()} / person)`
+          : `Organiser 4x4 (₹${pricingConfig.price_organiser.toLocaleString()} / person)`
+        : `Regular Entry (₹${pricingConfig.price_regular.toLocaleString()})`,
       total_amount: totalAmount,
       discount_amount: appliedPromo ? appliedPromo.discount : 0,
       promo_code: appliedPromo ? appliedPromo.code : undefined,
@@ -534,36 +544,43 @@ export function Registration() {
 
       passengers: passengers.filter((p) => p.name.trim().length > 0),
 
-      vehicle_owner: vehicle.ownerName || driver.fullName,
-      vehicle_reg_number: vehicle.regNumber,
-      vehicle_make: vehicle.make,
-      vehicle_model: vehicle.make ? `${vehicle.make} ${vehicle.model}` : vehicle.model,
-      manufacturing_year: vehicle.year,
-      vehicle_colour: vehicle.colour,
-      fuel_type: vehicle.fuelType,
-      transmission: vehicle.transmission,
-      drivetrain: vehicle.drivetrain,
-      is_modified: vehicle.isModified,
-      rig_class: vehicle.isModified ? "Pro-Modified (33\"–35\")" : "Standard Proving Spec",
-      modifications: vehicle.isModified
+      vehicle_owner: isDay2 ? "N/A (Organiser Fleet)" : (vehicle.ownerName || driver.fullName),
+      vehicle_reg_number: isDay2 ? "ORGANISER_FLEET" : vehicle.regNumber,
+      vehicle_make: isDay2 ? "Organiser 4x4 Fleet" : vehicle.make,
+      vehicle_model: isDay2 ? "Event Marshal Machine" : (vehicle.make ? `${vehicle.make} ${vehicle.model}` : vehicle.model),
+      manufacturing_year: isDay2 ? "2024" : vehicle.year,
+      vehicle_colour: isDay2 ? "Event Livery" : vehicle.colour,
+      fuel_type: isDay2 ? "Diesel" : vehicle.fuelType,
+      transmission: isDay2 ? "4x4" : vehicle.transmission,
+      drivetrain: isDay2 ? "4x4" : vehicle.drivetrain,
+      is_modified: isDay2 ? false : vehicle.isModified,
+      rig_class: isDay2 ? "Convoy Passenger" : (vehicle.isModified ? "Pro-Modified (33\"–35\")" : "Standard Proving Spec"),
+      modifications: isDay2 ? "N/A (Organiser Fleet)" : (vehicle.isModified
         ? `${modifications.suspension || ""}, ${modifications.tyresType || ""} (${modifications.tyreSize || ""}), ${modifications.differential || ""}, ${modifications.winch || ""}`.replace(/^, |, $/g, "")
-        : "Stock Configuration",
-      modification_details: vehicle.isModified ? modifications : undefined,
+        : "Stock Configuration"),
+      modification_details: isDay2 ? undefined : (vehicle.isModified ? modifications : undefined),
 
-      documents: {
-        rc_uploaded: documents.rcUploaded,
-        rc_file: documents.rcFileName,
-        rc_url: documents.rcUrl,
-        insurance_company: documents.insuranceCompany,
-        insurance_policy: documents.policyNumber,
-        insurance_expiry: documents.insuranceExpiry,
-        insurance_uploaded: documents.insuranceUploaded,
-        insurance_url: documents.insuranceUrl,
-        puc_number: documents.pucNumber,
-        puc_expiry: documents.pucExpiry,
-        puc_uploaded: documents.pucUploaded,
-        puc_url: documents.pucUrl,
-      },
+      documents: isDay2
+        ? {
+            rc_uploaded: false,
+            rc_file: "N/A (Day 2 Passenger)",
+            insurance_uploaded: false,
+            puc_uploaded: false,
+          }
+        : {
+            rc_uploaded: documents.rcUploaded,
+            rc_file: documents.rcFileName,
+            rc_url: documents.rcUrl,
+            insurance_company: documents.insuranceCompany,
+            insurance_policy: documents.policyNumber,
+            insurance_expiry: documents.insuranceExpiry,
+            insurance_uploaded: documents.insuranceUploaded,
+            insurance_url: documents.insuranceUrl,
+            puc_number: documents.pucNumber,
+            puc_expiry: documents.pucExpiry,
+            puc_uploaded: documents.pucUploaded,
+            puc_url: documents.pucUrl,
+          },
 
       safety_experience: safety,
       payment_screenshot_url: paymentScreenshotUrl,
@@ -616,16 +633,21 @@ export function Registration() {
     }
   };
 
-  const stepsList = [
-    { num: 1, label: "Experience" },
-    { num: 2, label: "Driver & Crew" },
-    { num: 3, label: "Vehicle" },
-    { num: 4, label: "Documents" },
-    { num: 5, label: "Safety" },
-    { num: 6, label: "Payment" },
-  ];
-
-  const displayStepNum = currentStep === 3.5 ? 3 : currentStep;
+  const stepsList = isDay2
+    ? [
+        { num: 1, internalStep: 1, label: "Experience" },
+        { num: 2, internalStep: 2, label: "Participants" },
+        { num: 3, internalStep: 5, label: "Safety" },
+        { num: 4, internalStep: 6, label: "Payment" },
+      ]
+    : [
+        { num: 1, internalStep: 1, label: "Experience" },
+        { num: 2, internalStep: 2, label: "Driver & Crew" },
+        { num: 3, internalStep: 3, label: "Vehicle" },
+        { num: 4, internalStep: 4, label: "Documents" },
+        { num: 5, internalStep: 5, label: "Safety" },
+        { num: 6, internalStep: 6, label: "Payment" },
+      ];
 
   return (
     <section id="registration" className="relative w-full py-4 sm:py-6 lg:py-8 bg-[#0d1117] text-neutral-800 min-h-[calc(100vh-4rem)] flex flex-col justify-start">
@@ -706,6 +728,7 @@ export function Registration() {
                   if (!pricingConfig.online_registration_open) return;
                   setSelectedExperience("OWN 4X4 EXPERIENCE");
                   setSelectedDate("14 NOV 2026");
+                  setPricingTier("REGULAR");
                   setCurrentStep(1);
                 }}
                 className={`cursor-pointer group relative bg-neutral-900 hover:bg-neutral-850 border-2 border-amber-600 rounded-xl p-5 flex flex-col justify-between transition-all shadow-lg hover:shadow-amber-900/30 ${
@@ -727,13 +750,11 @@ export function Registration() {
 
                 <div className="pt-4 border-t border-neutral-800 mt-4 flex items-center justify-between">
                   <div>
-                    <div className="text-sm font-bold text-amber-400">
-                      ₹{pricingConfig.price_early_bird.toLocaleString()}{" "}
-                      <span className="text-xs font-normal text-neutral-400">Early Bird</span>
+                    <div className="text-base font-bold text-amber-400">
+                      ₹{pricingConfig.price_regular.toLocaleString()}
                     </div>
-                    <div className="text-xs text-neutral-400">
-                      ₹{pricingConfig.price_regular.toLocaleString()}{" "}
-                      <span className="text-[10px]">Regular</span>
+                    <div className="text-[11px] text-neutral-400">
+                      Standard Entry (1 Driver + 2 Crew)
                     </div>
                   </div>
                   <div className="w-8 h-8 rounded-full bg-amber-600 text-white flex items-center justify-center group-hover:translate-x-1 transition-transform">
@@ -748,6 +769,9 @@ export function Registration() {
                   if (!pricingConfig.online_registration_open) return;
                   setSelectedExperience("ORGANISER 4X4 EXPERIENCE");
                   setSelectedDate("15 NOV 2026");
+                  setPricingTier("REGULAR");
+                  setAdditionalCount(0);
+                  setPassengers([]);
                   setCurrentStep(1);
                 }}
                 className={`cursor-pointer group relative bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 hover:border-neutral-700 rounded-xl p-5 flex flex-col justify-between transition-all ${
@@ -784,6 +808,9 @@ export function Registration() {
                   if (!pricingConfig.online_registration_open) return;
                   setSelectedExperience("EXTREME 4X4 THRILL EXPERIENCE");
                   setSelectedDate("15 NOV 2026");
+                  setPricingTier("REGULAR");
+                  setAdditionalCount(0);
+                  setPassengers([]);
                   setCurrentStep(1);
                 }}
                 className={`cursor-pointer group relative bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 hover:border-neutral-700 rounded-xl p-5 flex flex-col justify-between transition-all ${
@@ -850,8 +877,10 @@ export function Registration() {
                 <div className="absolute top-4 left-6 right-6 h-0.5 bg-neutral-200 -z-0" />
 
                 {stepsList.map((step) => {
-                  const isActive = displayStepNum === step.num;
-                  const isDone = displayStepNum > step.num;
+                  const isActive =
+                    currentStep === step.internalStep ||
+                    (!isDay2 && currentStep === 3.5 && step.internalStep === 3);
+                  const isDone = currentStep > step.internalStep;
 
                   return (
                     <div key={step.num} className="flex flex-col items-center relative z-10">
@@ -919,40 +948,37 @@ export function Registration() {
                             </div>
                           </div>
 
-                          {/* Pricing Tiers Selectable */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-4">
-                            {/* Early Bird */}
-                            <div
-                              onClick={() => setPricingTier("EARLY_BIRD")}
-                              className={`cursor-pointer rounded-xl border p-3.5 transition-all text-center ${
-                                pricingTier === "EARLY_BIRD"
-                                  ? "border-[#f05a28] bg-orange-50/40 ring-2 ring-[#f05a28]/20"
-                                  : "border-neutral-200 hover:border-neutral-300"
-                              }`}
-                            >
-                              <div className="font-outfit text-xl font-black text-neutral-900">
-                                ₹{pricingConfig.price_early_bird.toLocaleString()}
+                          {/* Pricing Display */}
+                          {!isDay2 ? (
+                            <div className="my-4">
+                              <div className="rounded-xl border-2 border-[#f05a28] bg-orange-50/40 p-4 text-center ring-2 ring-[#f05a28]/20">
+                                <div className="font-outfit text-2xl sm:text-3xl font-black text-neutral-900">
+                                  ₹{pricingConfig.price_regular.toLocaleString()}
+                                </div>
+                                <div className="text-xs font-bold text-neutral-800 mt-1 uppercase tracking-wider">
+                                  Standard Vehicle Entry Slot
+                                </div>
+                                <div className="text-[11px] text-neutral-600 mt-0.5">
+                                  1 Vehicle • 1 Driver + 2 Crew/Family Members Included
+                                </div>
                               </div>
-                              <div className="text-xs font-bold text-neutral-800 mt-0.5">Early Bird</div>
-                              <div className="text-[10px] text-neutral-500">First 10 Vehicles</div>
                             </div>
-
-                            {/* Regular */}
-                            <div
-                              onClick={() => setPricingTier("REGULAR")}
-                              className={`cursor-pointer rounded-xl border p-3.5 transition-all text-center ${
-                                pricingTier === "REGULAR"
-                                  ? "border-[#f05a28] bg-orange-50/40 ring-2 ring-[#f05a28]/20"
-                                  : "border-neutral-200 hover:border-neutral-300"
-                              }`}
-                            >
-                              <div className="font-outfit text-xl font-black text-neutral-900">
-                                ₹{pricingConfig.price_regular.toLocaleString()}
+                          ) : (
+                            <div className="my-4">
+                              <div className="rounded-xl border-2 border-[#f05a28] bg-orange-50/40 p-4 text-center ring-2 ring-[#f05a28]/20">
+                                <div className="font-outfit text-2xl sm:text-3xl font-black text-neutral-900">
+                                  ₹{day2PerPersonPrice.toLocaleString()}{" "}
+                                  <span className="text-sm font-normal text-neutral-600">/ Person</span>
+                                </div>
+                                <div className="text-xs font-bold text-neutral-800 mt-1 uppercase tracking-wider">
+                                  {isExtreme ? "Extreme 4x4 Thrill Run" : "Organiser 4x4 Experience"}
+                                </div>
+                                <div className="text-[11px] text-emerald-800 font-medium mt-0.5">
+                                  Ride With Event Marshals • No Vehicle or Driving License Needed
+                                </div>
                               </div>
-                              <div className="text-xs font-bold text-neutral-800 mt-0.5">Regular</div>
-                              <div className="text-[10px] text-neutral-500">Next 10 Vehicles</div>
                             </div>
-                          </div>
+                          )}
                         </div>
 
                         {/* Additional Participant Counter */}
@@ -962,9 +988,11 @@ export function Registration() {
                               <User className="w-4 h-4" />
                             </div>
                             <div>
-                              <div className="text-xs font-bold text-neutral-900">Additional Participant</div>
+                              <div className="text-xs font-bold text-neutral-900">
+                                {isDay2 ? "Additional Co-Passengers / Seats" : "Additional Participant"}
+                              </div>
                               <div className="text-[11px] text-[#f05a28] font-semibold">
-                                ₹{pricingConfig.price_additional_participant.toLocaleString()} / Person
+                                ₹{currentAdditionalPrice.toLocaleString()} / Person
                               </div>
                             </div>
                           </div>
@@ -975,7 +1003,7 @@ export function Registration() {
                               onClick={() => {
                                 if (additionalCount > 0) {
                                   setAdditionalCount(additionalCount - 1);
-                                  if (passengers.length > 2) {
+                                  if (passengers.length > 0) {
                                     setPassengers(passengers.slice(0, -1));
                                   }
                                 }
@@ -990,7 +1018,6 @@ export function Registration() {
                             <button
                               type="button"
                               onClick={() => {
-                                setAdditionalCount(additionalCount + 1);
                                 handleAddPassenger();
                               }}
                               className="w-7 h-7 rounded border border-neutral-300 bg-white text-neutral-700 font-bold hover:bg-neutral-100 flex items-center justify-center text-sm"
@@ -1015,11 +1042,19 @@ export function Registration() {
                           <ul className="text-xs text-neutral-700 space-y-2.5">
                             <li className="flex items-center space-x-2.5">
                               <Users className="w-4 h-4 text-[#f05a28] flex-shrink-0" />
-                              <span>1 Driver + 2 Crew/Family included</span>
+                              <span>
+                                {isDay2
+                                  ? "Guaranteed passenger seat in Organiser 4x4 fleet"
+                                  : "1 Driver + 2 Crew/Family included"}
+                              </span>
                             </li>
                             <li className="flex items-center space-x-2.5">
                               <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                              <span>15+ Natural &amp; Technical Obstacles</span>
+                              <span>
+                                {isDay2
+                                  ? "Certified Event Marshals piloting the machine"
+                                  : "15+ Natural & Technical Obstacles"}
+                              </span>
                             </li>
                             <li className="flex items-center space-x-2.5">
                               <Sparkles className="w-4 h-4 text-amber-500 flex-shrink-0" />
@@ -1027,7 +1062,11 @@ export function Registration() {
                             </li>
                             <li className="flex items-center space-x-2.5">
                               <Car className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                              <span>Professional Action Photography &amp; Video</span>
+                              <span>
+                                {isDay2
+                                  ? "No personal 4x4 or driving licence required"
+                                  : "Professional Action Photography & Video"}
+                              </span>
                             </li>
                             <li className="flex items-center space-x-2.5">
                               <Shield className="w-4 h-4 text-emerald-600 flex-shrink-0" />
@@ -1084,8 +1123,14 @@ export function Registration() {
                           <User className="w-4 h-4" />
                         </div>
                         <div>
-                          <h3 className="font-outfit font-black text-base text-neutral-900">Lead Driver Details</h3>
-                          <p className="text-[11px] text-neutral-500">Primary driver steering the vehicle on trail</p>
+                          <h3 className="font-outfit font-black text-base text-neutral-900">
+                            {isDay2 ? "Primary Participant Details" : "Lead Driver Details"}
+                          </h3>
+                          <p className="text-[11px] text-neutral-500">
+                            {isDay2
+                              ? "Primary attendee for Day 2 trail experience"
+                              : "Primary driver steering the vehicle on trail"}
+                          </p>
                         </div>
                       </div>
 
@@ -1228,9 +1273,10 @@ export function Registration() {
                             >
                               <option value="">Select ID proof</option>
                               <option value="Aadhaar Card">Aadhaar Card</option>
-                              <option value="Driving Licence">Driving Licence</option>
+                              {!isDay2 && <option value="Driving Licence">Driving Licence</option>}
                               <option value="Passport">Passport</option>
                               <option value="Voter ID">Voter ID</option>
+                              {isDay2 && <option value="Government ID">Government ID</option>}
                             </select>
                             <label className="cursor-pointer px-3 py-2 bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 rounded-lg text-xs font-medium text-neutral-700 flex items-center space-x-1 flex-shrink-0">
                               <Upload className="w-3.5 h-3.5 text-neutral-500" />
@@ -1254,98 +1300,121 @@ export function Registration() {
                             <Users className="w-4 h-4" />
                           </div>
                           <div>
-                            <h3 className="font-outfit font-black text-base text-neutral-900">Crew / Co-Passengers</h3>
-                            <p className="text-[11px] text-neutral-500">2 friends/family included in standard slot</p>
+                            <h3 className="font-outfit font-black text-base text-neutral-900">
+                              {isDay2 ? "Additional Co-Passengers" : "Crew / Co-Passengers"}
+                            </h3>
+                            <p className="text-[11px] text-neutral-500">
+                              {isDay2
+                                ? "Day 2 tickets are per-person; add extra seats if friends or family join"
+                                : "2 friends/family included in standard slot"}
+                            </p>
                           </div>
                         </div>
                         <span className="text-[10px] font-mono font-bold bg-white border border-neutral-200 px-2 py-0.5 rounded text-neutral-700">
-                          {passengers.length} Crew
+                          {isDay2 ? `${1 + additionalCount} Seat(s)` : `${passengers.length} Crew`}
                         </span>
                       </div>
 
-                      <div className="space-y-2.5 max-h-[290px] overflow-y-auto pr-1">
-                        {passengers.map((passenger, idx) => (
-                          <div key={idx} className="p-3 rounded-lg border border-neutral-200 bg-white space-y-2">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-1.5">
-                                <span className="w-5 h-5 rounded-full bg-neutral-100 text-[10px] font-bold flex items-center justify-center text-neutral-700">
-                                  {idx + 1}
-                                </span>
-                                <span className="text-xs font-bold text-neutral-800">
-                                  {idx === 0 ? "Co-Driver / Spotter" : `Passenger ${idx + 1}`}
-                                </span>
+                      {isDay2 && passengers.length === 0 ? (
+                        <div className="p-4 rounded-lg bg-white border border-neutral-200 text-center space-y-2">
+                          <User className="w-8 h-8 text-neutral-400 mx-auto" />
+                          <p className="text-xs text-neutral-800 font-bold">
+                            Single Participant Seat Reserved
+                          </p>
+                          <p className="text-[11px] text-neutral-500 leading-relaxed max-w-sm mx-auto">
+                            Attending alone? Click Save &amp; Continue below to proceed. If friends or family are joining you on Day 2, click Add Extra Participant below.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2.5 max-h-[290px] overflow-y-auto pr-1">
+                          {passengers.map((passenger, idx) => (
+                            <div key={idx} className="p-3 rounded-lg border border-neutral-200 bg-white space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-1.5">
+                                  <span className="w-5 h-5 rounded-full bg-neutral-100 text-[10px] font-bold flex items-center justify-center text-neutral-700">
+                                    {idx + 1}
+                                  </span>
+                                  <span className="text-xs font-bold text-neutral-800">
+                                    {isDay2
+                                      ? `Co-Passenger ${idx + 1}`
+                                      : idx === 0
+                                      ? "Co-Driver / Spotter"
+                                      : `Passenger ${idx + 1}`}
+                                  </span>
+                                </div>
+                                {(!isDay2 && idx >= 2) || (isDay2 && passengers.length > 0) ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemovePassenger(idx)}
+                                    className="text-red-600 hover:text-red-700 text-[11px] flex items-center space-x-1"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                    <span>Remove</span>
+                                  </button>
+                                ) : null}
                               </div>
-                              {idx >= 2 && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemovePassenger(idx)}
-                                  className="text-red-600 hover:text-red-700 text-[11px] flex items-center space-x-1"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                  <span>Remove</span>
-                                </button>
-                              )}
-                            </div>
 
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                              <div>
-                                <input
-                                  type="text"
-                                  value={passenger.name}
-                                  onChange={(e) => {
-                                    const next = [...passengers];
-                                    next[idx].name = e.target.value;
-                                    setPassengers(next);
-                                  }}
-                                  placeholder="Full Name"
-                                  className="w-full px-2.5 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs text-neutral-900"
-                                />
-                              </div>
-                              <div>
-                                <input
-                                  type="number"
-                                  value={passenger.age}
-                                  onChange={(e) => {
-                                    const next = [...passengers];
-                                    next[idx].age = e.target.value;
-                                    setPassengers(next);
-                                  }}
-                                  placeholder="Age"
-                                  className="w-full px-2.5 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs text-neutral-900"
-                                />
-                              </div>
-                              <div>
-                                <select
-                                  value={passenger.relationship}
-                                  onChange={(e) => {
-                                    const next = [...passengers];
-                                    next[idx].relationship = e.target.value;
-                                    setPassengers(next);
-                                  }}
-                                  className="w-full px-2 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs text-neutral-900"
-                                >
-                                  <option value="">Relation</option>
-                                  <option value="Family">Family</option>
-                                  <option value="Friend">Friend</option>
-                                  <option value="Co-Driver">Co-Driver</option>
-                                  <option value="Spotter">Spotter</option>
-                                </select>
-                              </div>
-                              <div>
-                                <label className="cursor-pointer w-full py-1.5 px-2 bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 rounded text-[11px] text-neutral-700 flex items-center justify-center space-x-1 truncate">
-                                  <Upload className="w-3 h-3 flex-shrink-0" />
-                                  <span className="truncate">{passenger.idProofUrl ? "Done" : "Upload ID"}</span>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                <div>
                                   <input
-                                    type="file"
-                                    className="hidden"
-                                    onChange={(e) => handleFileUpload(e, `passenger_id_${idx}`)}
+                                    type="text"
+                                    value={passenger.name}
+                                    onChange={(e) => {
+                                      const next = [...passengers];
+                                      next[idx].name = e.target.value;
+                                      setPassengers(next);
+                                    }}
+                                    placeholder="Full Name"
+                                    className="w-full px-2.5 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs text-neutral-900"
                                   />
-                                </label>
+                                </div>
+                                <div>
+                                  <input
+                                    type="number"
+                                    value={passenger.age}
+                                    onChange={(e) => {
+                                      const next = [...passengers];
+                                      next[idx].age = e.target.value;
+                                      setPassengers(next);
+                                    }}
+                                    placeholder="Age"
+                                    className="w-full px-2.5 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs text-neutral-900"
+                                  />
+                                </div>
+                                <div>
+                                  <select
+                                    value={passenger.relationship}
+                                    onChange={(e) => {
+                                      const next = [...passengers];
+                                      next[idx].relationship = e.target.value;
+                                      setPassengers(next);
+                                    }}
+                                    className="w-full px-2 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs text-neutral-900"
+                                  >
+                                    <option value="">Relation</option>
+                                    <option value="Family">Family</option>
+                                    <option value="Friend">Friend</option>
+                                    {!isDay2 && <option value="Co-Driver">Co-Driver</option>}
+                                    {!isDay2 && <option value="Spotter">Spotter</option>}
+                                    {isDay2 && <option value="Co-Passenger">Co-Passenger</option>}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="cursor-pointer w-full py-1.5 px-2 bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 rounded text-[11px] text-neutral-700 flex items-center justify-center space-x-1 truncate">
+                                    <Upload className="w-3 h-3 flex-shrink-0" />
+                                    <span className="truncate">{passenger.idProofUrl ? "Done" : "Upload ID"}</span>
+                                    <input
+                                      type="file"
+                                      className="hidden"
+                                      onChange={(e) => handleFileUpload(e, `passenger_id_${idx}`)}
+                                    />
+                                  </label>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      )}
 
                       <button
                         type="button"
@@ -1354,7 +1423,7 @@ export function Registration() {
                       >
                         <Plus className="w-3.5 h-3.5 text-emerald-700" />
                         <span>
-                          Add Extra Participant (+₹{pricingConfig.price_additional_participant.toLocaleString()})
+                          Add Extra Participant (+₹{currentAdditionalPrice.toLocaleString()})
                         </span>
                       </button>
                     </div>
@@ -1383,7 +1452,11 @@ export function Registration() {
                           return;
                         }
                         setErrorMessage("");
-                        setCurrentStep(3);
+                        if (isDay2) {
+                          setCurrentStep(5);
+                        } else {
+                          setCurrentStep(3);
+                        }
                       }}
                       className="bg-[#14532d] hover:bg-[#052e16] text-white font-sans font-bold px-7 py-2.5 rounded-lg shadow-sm flex items-center space-x-2 transition-colors text-xs sm:text-sm"
                     >
@@ -2208,7 +2281,11 @@ export function Registration() {
                       type="button"
                       onClick={() => {
                         setErrorMessage("");
-                        setCurrentStep(4);
+                        if (isDay2) {
+                          setCurrentStep(2);
+                        } else {
+                          setCurrentStep(4);
+                        }
                       }}
                       className="px-5 py-2.5 border border-neutral-300 hover:bg-neutral-50 text-neutral-700 rounded-lg font-sans text-xs font-semibold flex items-center space-x-1.5"
                     >
@@ -2258,9 +2335,11 @@ export function Registration() {
                           <div className="font-outfit font-bold text-sm text-neutral-900">{selectedExperience}</div>
                           <div className="text-[11px] text-neutral-500">
                             {selectedDate} •{" "}
-                            {pricingTier === "EARLY_BIRD"
-                              ? `₹${pricingConfig.price_early_bird.toLocaleString()} Early Bird`
-                              : `₹${pricingConfig.price_regular.toLocaleString()} Regular`}
+                            {isDay2
+                              ? isExtreme
+                                ? `₹${pricingConfig.price_extreme.toLocaleString()} / Person`
+                                : `₹${pricingConfig.price_organiser.toLocaleString()} / Person`
+                              : `₹${pricingConfig.price_regular.toLocaleString()} Standard Entry`}
                           </div>
                         </div>
                       </div>
@@ -2274,7 +2353,7 @@ export function Registration() {
                       </button>
                     </div>
 
-                    {/* Driver Review Card */}
+                    {/* Driver / Participant Review Card */}
                     <div className="p-4 rounded-xl border border-neutral-200 bg-neutral-50/60 flex items-center justify-between">
                       <div className="flex items-center space-x-3">
                         <div className="w-10 h-10 rounded-lg bg-white border border-neutral-200 flex items-center justify-center flex-shrink-0">
@@ -2282,7 +2361,7 @@ export function Registration() {
                         </div>
                         <div>
                           <div className="font-bold text-xs text-neutral-900">
-                            {driver.fullName || "Primary Driver"}
+                            {driver.fullName || (isDay2 ? "Primary Participant" : "Primary Driver")}
                           </div>
                           <div className="text-[11px] text-neutral-500 font-mono">
                             {driver.mobile || "No phone entered"} {driver.city ? `• ${driver.city}` : ""}
@@ -2299,43 +2378,49 @@ export function Registration() {
                       </button>
                     </div>
 
-                    {/* Vehicle Review Card */}
-                    <div className="p-4 rounded-xl border border-neutral-200 bg-neutral-50/60 flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 rounded-lg bg-white border border-neutral-200 flex items-center justify-center flex-shrink-0">
-                          <Car className="w-5 h-5 text-neutral-700" />
-                        </div>
-                        <div>
-                          <div className="font-bold text-xs text-neutral-900">
-                            {vehicle.make ? `${vehicle.make} ${vehicle.model}` : vehicle.model || "Vehicle Specified"}
+                    {/* Vehicle Review Card - Only for Day 1 */}
+                    {!isDay2 && (
+                      <div className="p-4 rounded-xl border border-neutral-200 bg-neutral-50/60 flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 rounded-lg bg-white border border-neutral-200 flex items-center justify-center flex-shrink-0">
+                            <Car className="w-5 h-5 text-neutral-700" />
                           </div>
-                          <div className="text-[11px] text-neutral-500 font-mono">
-                            {vehicle.regNumber || "REG PENDING"} {vehicle.fuelType ? `| ${vehicle.fuelType}` : ""}{" "}
-                            {vehicle.transmission ? `| ${vehicle.transmission}` : ""}{" "}
-                            | {vehicle.isModified ? "Modified" : "Stock"}
+                          <div>
+                            <div className="font-bold text-xs text-neutral-900">
+                              {vehicle.make ? `${vehicle.make} ${vehicle.model}` : vehicle.model || "Vehicle Specified"}
+                            </div>
+                            <div className="text-[11px] text-neutral-500 font-mono">
+                              {vehicle.regNumber || "REG PENDING"} {vehicle.fuelType ? `| ${vehicle.fuelType}` : ""}{" "}
+                              {vehicle.transmission ? `| ${vehicle.transmission}` : ""}{" "}
+                              | {vehicle.isModified ? "Modified" : "Stock"}
+                            </div>
                           </div>
                         </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setCurrentStep(3)}
+                          className="text-xs font-semibold text-neutral-600 hover:text-neutral-900 underline"
+                        >
+                          Edit
+                        </button>
                       </div>
+                    )}
 
-                      <button
-                        type="button"
-                        onClick={() => setCurrentStep(3)}
-                        className="text-xs font-semibold text-neutral-600 hover:text-neutral-900 underline"
-                      >
-                        Edit
-                      </button>
-                    </div>
-
-                    {/* Crew Members Review Card */}
+                    {/* Crew / Participants Review Card */}
                     <div className="p-4 rounded-xl border border-neutral-200 bg-neutral-50/60 flex items-center justify-between">
                       <div className="flex items-center space-x-3">
                         <div className="w-10 h-10 rounded-lg bg-white border border-neutral-200 flex items-center justify-center flex-shrink-0">
                           <Users className="w-5 h-5 text-neutral-700" />
                         </div>
                         <div>
-                          <div className="font-bold text-xs text-neutral-900">Crew Members</div>
+                          <div className="font-bold text-xs text-neutral-900">
+                            {isDay2 ? "Total Participants" : "Crew Members"}
+                          </div>
                           <div className="text-[11px] text-neutral-500">
-                            Driver: 1 | Passengers: {passengers.filter((p) => p.name.trim()).length} | Additional: {additionalCount}
+                            {isDay2
+                              ? `${1 + additionalCount} Seat(s) Booked (Primary + ${additionalCount} extra)`
+                              : `Driver: 1 | Passengers: ${passengers.filter((p) => p.name.trim()).length} | Additional: ${additionalCount}`}
                           </div>
                         </div>
                       </div>
@@ -2349,30 +2434,32 @@ export function Registration() {
                       </button>
                     </div>
 
-                    {/* Documents Review Card */}
-                    <div className="p-4 rounded-xl border border-neutral-200 bg-neutral-50/60 flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 rounded-lg bg-white border border-neutral-200 flex items-center justify-center flex-shrink-0">
-                          <FileCheck className="w-5 h-5 text-neutral-700" />
-                        </div>
-                        <div>
-                          <div className="font-bold text-xs text-neutral-900">Documents</div>
-                          <div className="text-[11px] text-emerald-700 font-medium">
-                            {documents.rcUploaded || documents.insuranceUploaded
-                              ? "Documents attached & declarations signed"
-                              : "Declarations signed on record"}
+                    {/* Documents Review Card - Only for Day 1 */}
+                    {!isDay2 && (
+                      <div className="p-4 rounded-xl border border-neutral-200 bg-neutral-50/60 flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 rounded-lg bg-white border border-neutral-200 flex items-center justify-center flex-shrink-0">
+                            <FileCheck className="w-5 h-5 text-neutral-700" />
+                          </div>
+                          <div>
+                            <div className="font-bold text-xs text-neutral-900">Documents</div>
+                            <div className="text-[11px] text-emerald-700 font-medium">
+                              {documents.rcUploaded || documents.insuranceUploaded
+                                ? "Documents attached & declarations signed"
+                                : "Declarations signed on record"}
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setCurrentStep(4)}
-                        className="text-xs font-semibold text-neutral-600 hover:text-neutral-900 underline"
-                      >
-                        Edit
-                      </button>
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => setCurrentStep(4)}
+                          className="text-xs font-semibold text-neutral-600 hover:text-neutral-900 underline"
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    )}
 
                     {/* Safety & Medical Review Card */}
                     <div className="p-4 rounded-xl border border-neutral-200 bg-neutral-50/60 flex items-center justify-between">
@@ -2480,19 +2567,27 @@ export function Registration() {
                       Payment Summary
                     </div>
                     <div className="flex justify-between text-xs text-neutral-700">
-                      <span>{selectedExperience} ({pricingTier === "EARLY_BIRD" ? "Early Bird" : "Regular"})</span>
+                      <span>
+                        {selectedExperience}{" "}
+                        {isDay2 ? "(Primary Participant)" : "(Standard Vehicle Entry)"}
+                      </span>
                       <span className="font-mono">
-                        ₹{pricingTier === "EARLY_BIRD"
-                          ? pricingConfig.price_early_bird.toLocaleString()
+                        ₹
+                        {isDay2
+                          ? day2PerPersonPrice.toLocaleString()
                           : pricingConfig.price_regular.toLocaleString()}
                       </span>
                     </div>
 
                     {additionalCount > 0 && (
                       <div className="flex justify-between text-xs text-neutral-700">
-                        <span>Additional Participant x {additionalCount}</span>
+                        <span>
+                          {isDay2
+                            ? `Additional Participant(s) x ${additionalCount}`
+                            : `Additional Crew x ${additionalCount}`}
+                        </span>
                         <span className="font-mono">
-                          ₹{(additionalCount * pricingConfig.price_additional_participant).toLocaleString()}
+                          ₹{(additionalCount * currentAdditionalPrice).toLocaleString()}
                         </span>
                       </div>
                     )}
@@ -2718,7 +2813,9 @@ export function Registration() {
               <span>UNDER CHIEF MARSHAL VERIFICATION</span>
             </div>
             <p className="text-neutral-400 text-xs font-sans mt-2 max-w-lg mx-auto">
-              Your 4x4 machine details and UPI payment screenshot have been submitted successfully.
+              {confirmedData?.experience_type?.includes("OWN 4X4")
+                ? "Your 4x4 machine details and UPI payment screenshot have been submitted successfully."
+                : "Your registration details and UPI payment screenshot have been submitted successfully."}
             </p>
 
             {/* WhatsApp Verification Notification Banner (USER REQUIREMENT) */}
@@ -2781,7 +2878,9 @@ export function Registration() {
               </div>
 
               <div className="flex justify-between">
-                <span className="text-neutral-400">Driver Name:</span>
+                <span className="text-neutral-400">
+                  {confirmedData?.experience_type?.includes("OWN 4X4") ? "Driver Name:" : "Participant Name:"}
+                </span>
                 <span className="text-white font-bold">{confirmedData?.driver_name}</span>
               </div>
 
@@ -2818,7 +2917,11 @@ export function Registration() {
               <div className="font-bold text-neutral-200 text-sm mb-2">What Happens Next?</div>
               <div className="flex items-center space-x-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                <span>Chief Marshals verify your UPI transaction UTR and vehicle documents.</span>
+                <span>
+                  {confirmedData?.experience_type?.includes("OWN 4X4")
+                    ? "Chief Marshals verify your UPI transaction UTR and vehicle documents."
+                    : "Chief Marshals verify your UPI transaction UTR and participant entry."}
+                </span>
               </div>
               <div className="flex items-center space-x-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
