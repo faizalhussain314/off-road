@@ -18,6 +18,8 @@ dist-ssr
 .next_deploy*
 *.zip
 build.txt
+tsconfig.tsbuildinfo
+server.js
 
 
 # Editor directories and files
