@@ -58,18 +58,17 @@ jobs:
             npm install --omit=dev --no-audit --no-fund
             
             # Ensure .env.production is configured with current production server credentials
-            cat << 'EOF' > .env.production
-PORT=3001
-NODE_ENV=production
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_USER=optimusinfinity_mpuser
-MYSQL_PASSWORD=MadProTekPass2026!#
-MYSQL_DATABASE=optimusinfinity_offroad
-ADMIN_SECRET_KEY=madprotek2026
-NEXT_PUBLIC_APP_URL=https://adventure.madprotekcorp.com
-NEXT_PUBLIC_CASHFREE_ENV=TEST
-EOF
+            printf "%s\n" \
+              "PORT=3001" \
+              "NODE_ENV=production" \
+              "MYSQL_HOST=localhost" \
+              "MYSQL_PORT=3306" \
+              "MYSQL_USER=optimusinfinity_mpuser" \
+              "MYSQL_PASSWORD=MadProTekPass2026!#" \
+              "MYSQL_DATABASE=optimusinfinity_offroad" \
+              "ADMIN_SECRET_KEY=madprotek2026" \
+              "NEXT_PUBLIC_APP_URL=https://adventure.madprotekcorp.com" \
+              "NEXT_PUBLIC_CASHFREE_ENV=TEST" > .env.production
             
             # Start or reload with PM2 on port 3001
             node /home/optimusinfinity/madprotek/node_modules/pm2/bin/pm2 startOrReload ecosystem.config.cjs --update-env
