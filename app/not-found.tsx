@@ -7,7 +7,7 @@ export default function NotFound() {
         ERROR // 404
       </div>
       <h1 className="font-syne text-4xl sm:text-6xl font-black uppercase text-offwhite tracking-tightest mb-4">
-        TRAILHEAD NOT FOUND
+        TRAILHEAD NOT FOUND/404
       </h1>
       <p className="font-satoshi text-offwhite-muted text-sm max-w-md mb-8">
         The coordinates you entered are off the mapped technical grid. Return to the main staging area.
