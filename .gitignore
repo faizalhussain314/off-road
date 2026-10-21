@@ -20,6 +20,7 @@ dist-ssr
 build.txt
 tsconfig.tsbuildinfo
 server.js
+antigravity_deploy_key*
 
 
 # Editor directories and files
