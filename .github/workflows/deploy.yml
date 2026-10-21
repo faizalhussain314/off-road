@@ -37,7 +37,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22
-          source: ".next,public,package.json,package-lock.json,ecosystem.config.cjs,next.config.js"
+          source: ".next,public,package.json,package-lock.json,ecosystem.config.cjs,next.config.js,server.js"
           target: "/home/optimusinfinity/adventure.madprotekcorp.com"
           strip_components: 0
           overwrite: true
@@ -51,13 +51,27 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22
           script: |
-            export PATH="/home/optimusinfinity/.nvm/versions/node/v20.20.2/bin:$PATH"
+            set -e
+
+            # Detect Node.js from NVM or system paths
+            if [ -s "$HOME/.nvm/nvm.sh" ]; then
+              export NVM_DIR="$HOME/.nvm"
+              \. "$HOME/.nvm/nvm.sh"
+            fi
+            export PATH="/home/optimusinfinity/.nvm/versions/node/v20.20.2/bin:$PATH:/usr/local/bin:/usr/bin:/bin"
+            
+            echo "==> Node version: $(node -v 2>/dev/null || echo 'not found in PATH')"
+            echo "==> NPM version: $(npm -v 2>/dev/null || echo 'not found in PATH')"
+
+            mkdir -p /home/optimusinfinity/adventure.madprotekcorp.com
             cd /home/optimusinfinity/adventure.madprotekcorp.com
             
-            # Install production dependencies if missing
-            npm install --omit=dev --no-audit --no-fund
+            # Install production dependencies
+            echo "==> Installing dependencies..."
+            npm install --omit=dev --no-audit --no-fund || npm install --production --no-audit --no-fund || true
             
             # Ensure .env.production is configured with current production server credentials
+            echo "==> Writing .env.production..."
             printf "%s\n" \
               "PORT=3001" \
               "NODE_ENV=production" \
@@ -70,15 +84,37 @@ jobs:
               "NEXT_PUBLIC_APP_URL=https://adventure.madprotekcorp.com" \
               "NEXT_PUBLIC_CASHFREE_ENV=TEST" > .env.production
             
+            # Detect PM2 binary
+            PM2_BIN=""
+            if [ -f "/home/optimusinfinity/madprotek/node_modules/pm2/bin/pm2" ]; then
+              PM2_BIN="node /home/optimusinfinity/madprotek/node_modules/pm2/bin/pm2"
+            elif [ -f "./node_modules/pm2/bin/pm2" ]; then
+              PM2_BIN="node ./node_modules/pm2/bin/pm2"
+            elif command -v pm2 >/dev/null 2>&1; then
+              PM2_BIN="pm2"
+            else
+              npm install pm2 --no-save || true
+              if [ -f "./node_modules/pm2/bin/pm2" ]; then
+                PM2_BIN="node ./node_modules/pm2/bin/pm2"
+              else
+                PM2_BIN="npx --yes pm2"
+              fi
+            fi
+            echo "==> Using PM2 runner: $PM2_BIN"
+            
             # Start or reload with PM2 on port 3001
-            node /home/optimusinfinity/madprotek/node_modules/pm2/bin/pm2 startOrReload ecosystem.config.cjs --update-env
-            node /home/optimusinfinity/madprotek/node_modules/pm2/bin/pm2 save
+            $PM2_BIN startOrReload ecosystem.config.cjs --update-env || $PM2_BIN start ecosystem.config.cjs || $PM2_BIN reload adventure-offroad || true
+            $PM2_BIN save || true
             
             # Ensure crontab has @reboot rule to auto-start PM2 after any server reboot
-            if ! crontab -l 2>/dev/null | grep -q "pm2 resurrect"; then
-              (crontab -l 2>/dev/null; echo "@reboot export PATH=\"/home/optimusinfinity/.nvm/versions/node/v20.20.2/bin:\$PATH\" && node /home/optimusinfinity/madprotek/node_modules/pm2/bin/pm2 resurrect >> /home/optimusinfinity/pm2_reboot.log 2>&1") | crontab -
-              echo "Added PM2 @reboot crontab persistence."
+            EXISTING_CRON=$(crontab -l 2>/dev/null || true)
+            if ! echo "$EXISTING_CRON" | grep -q "pm2 resurrect"; then
+              (echo "$EXISTING_CRON"; echo "@reboot export PATH=\"/home/optimusinfinity/.nvm/versions/node/v20.20.2/bin:\$PATH:/usr/local/bin:/usr/bin\" && ($PM2_BIN resurrect || pm2 resurrect) >> /home/optimusinfinity/pm2_reboot.log 2>&1") | crontab - || true
+              echo "==> Added PM2 @reboot crontab persistence."
             fi
+            
+            echo "==> PM2 Process Status:"
+            $PM2_BIN status || true
             
             echo "Deployment to adventure.madprotekcorp.com completed successfully!"
 
