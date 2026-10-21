@@ -37,7 +37,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22
-          source: ".next,public,package.json,package-lock.json,ecosystem.config.cjs,next.config.js,server.js"
+          source: ".next,public,package.json,package-lock.json,ecosystem.config.cjs,next.config.js"
           target: "/home/optimusinfinity/adventure.madprotekcorp.com"
           strip_components: 0
           overwrite: true
