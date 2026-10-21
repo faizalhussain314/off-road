@@ -19,7 +19,6 @@ dist-ssr
 *.zip
 build.txt
 tsconfig.tsbuildinfo
-server.js
 antigravity_deploy_key*
 
 
