@@ -24,7 +24,9 @@ jobs:
         run: npm ci
 
       - name: Build Next.js Application
-        run: npm run build
+        run: |
+          export NEXT_DIST_DIR=".next_prod"
+          npm run build
         env:
           NODE_ENV: production
           NEXT_TELEMETRY_DISABLED: 1
@@ -37,12 +39,12 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22
-          source: ".next,public,package.json,package-lock.json,ecosystem.config.cjs,next.config.js"
-          target: "/home/optimusinfinity/adventure.madprotekcorp.com"
+          source: ".next_prod,public,package.json,package-lock.json,next.config.js,server.js"
+          target: "/home/madprote/adventure.madprotekcorp.com"
           strip_components: 0
           overwrite: true
 
-      - name: Execute Remote PM2 Restart
+      - name: Restart Application via SSH
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -53,44 +55,33 @@ jobs:
           debug: true
           script_stop: false
           script: |
-            export PATH="/home/optimusinfinity/.nvm/versions/node/v20.20.2/bin:$PATH:/usr/local/bin:/usr/bin:/bin"
-            if [ -s "$HOME/.nvm/nvm.sh" ]; then
-              export NVM_DIR="$HOME/.nvm"
-              \. "$HOME/.nvm/nvm.sh" || true
+            cd /home/madprote/adventure.madprotekcorp.com
+
+            # Clean cache to prevent disk quota exceed
+            rm -rf /home/madprote/.npm /home/madprote/.cache 2>/dev/null || true
+
+            # Activate server Node.js 20 virtual environment
+            if [ -f "/home/madprote/nodevenv/adventure.madprotekcorp.com/20/bin/activate" ]; then
+              source /home/madprote/nodevenv/adventure.madprotekcorp.com/20/bin/activate
             fi
 
-            cd /home/optimusinfinity/adventure.madprotekcorp.com
+            echo "==> Server Node version: $(node -v 2>/dev/null || echo 'not found')"
 
-            echo "==> Node: $(node -v 2>/dev/null || echo 'not found')"
-            echo "==> NPM: $(npm -v 2>/dev/null || echo 'not found')"
-
-            echo "==> Writing .env.production..."
+            # Ensure .env.production is properly configured
             printf "%s\n" \
-              "PORT=3001" \
+              "PORT=3000" \
               "NODE_ENV=production" \
               "MYSQL_HOST=localhost" \
               "MYSQL_PORT=3306" \
-              "MYSQL_USER=optimusinfinity_mpuser" \
+              "MYSQL_USER=madprote_mpuser" \
               "MYSQL_PASSWORD=MadProTekPass2026!#" \
-              "MYSQL_DATABASE=optimusinfinity_offroad" \
+              "MYSQL_DATABASE=madprote_offroad" \
               "ADMIN_SECRET_KEY=madprotek2026" \
               "NEXT_PUBLIC_APP_URL=https://adventure.madprotekcorp.com" \
               "NEXT_PUBLIC_CASHFREE_ENV=TEST" > .env.production
 
-            echo "==> Installing dependencies..."
-            npm install --omit=dev --no-audit --no-fund || true
-
-            echo "==> Reloading PM2 process..."
-            if [ -f "/home/optimusinfinity/madprotek/node_modules/pm2/bin/pm2" ]; then
-              node /home/optimusinfinity/madprotek/node_modules/pm2/bin/pm2 startOrReload ecosystem.config.cjs --update-env || node /home/optimusinfinity/madprotek/node_modules/pm2/bin/pm2 start ecosystem.config.cjs || true
-              node /home/optimusinfinity/madprotek/node_modules/pm2/bin/pm2 save || true
-            elif command -v pm2 >/dev/null 2>&1; then
-              pm2 startOrReload ecosystem.config.cjs --update-env || pm2 start ecosystem.config.cjs || true
-              pm2 save || true
-            else
-              npx pm2 startOrReload ecosystem.config.cjs --update-env || npx pm2 start ecosystem.config.cjs || true
-              npx pm2 save || true
-            fi
+            # Trigger LiteSpeed / Passenger instant restart
+            mkdir -p tmp && touch tmp/restart.txt
+            pkill -f "lsnode.*adventure.madprotekcorp.com" 2>/dev/null || true
 
             echo "Deployment to adventure.madprotekcorp.com completed successfully!"
-
