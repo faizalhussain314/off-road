@@ -90,3 +90,61 @@ html.lenis body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Print Optimization: Print ONLY the Official Ticket Pass */
+@media print {
+  @page {
+    margin: 10mm;
+    size: auto;
+  }
+
+  /* Hide entire page content from print */
+  body * {
+    visibility: hidden;
+  }
+
+  /* Completely remove navigation, headers, footers and no-print UI */
+  .no-print,
+  nav,
+  header,
+  footer {
+    display: none !important;
+  }
+
+  /* Make ONLY the ticket pass and its children visible and positioned at the top */
+  #ticket-print-area,
+  #ticket-print-area * {
+    visibility: visible;
+  }
+
+  #ticket-print-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    border: 2px solid #000000 !important;
+    box-shadow: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html,
+  body,
+  main {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+

@@ -26,8 +26,6 @@ export function Navbar() {
     { label: "OBSTACLES", href: "#obstacles" },
     { label: "GALLERY", href: "#gallery" },
     { label: "EXPERIENCE", href: "#experience" },
-    { label: "MY TICKET", href: "/my-ticket" },
-    { label: "REGISTRATION", href: "#registration" },
     { label: "CONTACT", href: "#contact" },
   ];
 
@@ -36,34 +34,34 @@ export function Navbar() {
       <header
         className={`fixed top-0 left-0 w-full z-40 transition-all duration-300 ${
           isScrolled
-            ? "bg-white/90 backdrop-blur-md border-b border-neutral-200 py-3.5 shadow-sm"
-            : "bg-white/60 backdrop-blur-sm py-4 border-b border-black/5"
+            ? "bg-white/95 backdrop-blur-md border-b border-neutral-200 py-3 shadow-xs"
+            : "bg-white/80 backdrop-blur-sm py-3.5 border-b border-neutral-200/60"
         }`}
       >
-        <div className="max-w-7xl mx-auto px-6 sm:px-8 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
           {/* Brand Logo */}
           <a
             href="/"
-            className="flex items-center space-x-3 group focus:outline-none"
+            className="flex items-center space-x-2.5 sm:space-x-3 group focus:outline-none flex-shrink-0"
             aria-label="MadProTek Home"
           >
             <img
               src="/M-word-logo.png"
               alt="MadProTek Logo"
-              className="h-9 sm:h-10 w-auto object-contain transition-transform duration-200 group-hover:scale-105"
+              className="h-8 sm:h-9 w-auto object-contain transition-transform duration-200 group-hover:scale-105"
             />
             <div className="flex flex-col">
-              <span className="font-outfit font-black text-base sm:text-lg tracking-wider text-neutral-900 group-hover:text-amber-700 transition-colors leading-none">
+              <span className="font-outfit font-black text-sm sm:text-base tracking-wider text-neutral-900 group-hover:text-amber-700 transition-colors leading-none">
                 MADPROTEK
               </span>
-              <span className="text-[9px] font-mono tracking-tactical text-amber-700 uppercase font-bold mt-1">
+              <span className="text-[9px] font-mono tracking-widest text-amber-700 uppercase font-bold mt-0.5">
                 TRAIL 2026
               </span>
             </div>
           </a>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden lg:flex items-center space-x-7 text-xs font-mono tracking-widest text-neutral-700 font-medium">
+          <nav className="hidden lg:flex items-center space-x-6 xl:space-x-8 text-xs font-mono tracking-widest text-neutral-700 font-semibold">
             {navLinks.map((link) => (
               <a
                 key={link.label}
@@ -75,80 +73,95 @@ export function Navbar() {
             ))}
           </nav>
 
-          {/* Action CTA */}
-          <div className="hidden sm:flex items-center space-x-3">
+          {/* Action CTAs */}
+          <div className="hidden lg:flex items-center space-x-3 flex-shrink-0">
             <a
               href="/my-ticket"
-              className="inline-flex items-center px-3.5 py-2 border border-neutral-300 hover:border-amber-600 text-neutral-800 font-syne font-bold text-xs tracking-wider uppercase transition-colors"
+              className="inline-flex items-center px-3.5 py-1.5 border border-neutral-300 hover:border-amber-600 hover:text-amber-700 text-neutral-800 font-syne font-bold text-xs tracking-wider uppercase transition-colors rounded-sm"
             >
               <span>MY TICKET</span>
             </a>
             <a
               href="#registration"
-              className="inline-flex items-center space-x-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-syne font-bold text-xs tracking-wider uppercase transition-all duration-200 shadow-sm hover:scale-[1.02]"
+              className="inline-flex items-center space-x-1 px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-syne font-bold text-xs tracking-wider uppercase transition-all duration-200 shadow-xs hover:scale-[1.02] rounded-sm"
             >
               <span>REGISTER 4X4</span>
               <ArrowUpRight className="w-3.5 h-3.5" />
             </a>
           </div>
 
-          {/* Mobile Menu Toggle */}
-          <button
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="md:hidden text-neutral-900 hover:text-amber-700 p-2 focus:outline-none"
-            aria-label="Toggle Navigation Menu"
-          >
-            {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
+          {/* Mobile / Tablet Actions & Menu Toggle */}
+          <div className="flex items-center space-x-2 lg:hidden">
+            <a
+              href="#registration"
+              className="inline-flex items-center px-3 py-1 bg-amber-600 text-white font-syne font-bold text-[11px] tracking-wider uppercase rounded-sm"
+            >
+              <span>REGISTER</span>
+            </a>
+            <button
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="text-neutral-900 hover:text-amber-700 p-2 rounded focus:outline-none"
+              aria-label="Toggle Navigation Menu"
+            >
+              {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
       </header>
 
       {/* Mobile Menu Drawer Overlay */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-50 bg-white/98 backdrop-blur-xl flex flex-col justify-between p-8 md:hidden">
-          <div className="flex items-center justify-between">
+        <div className="fixed inset-0 z-50 bg-neutral-950/95 backdrop-blur-xl flex flex-col justify-between p-6 sm:p-8 lg:hidden animate-in fade-in duration-200">
+          <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
             <div className="flex items-center space-x-3">
               <img
                 src="/M-word-logo.png"
                 alt="MadProTek Logo"
-                className="h-9 w-auto object-contain"
+                className="h-8 w-auto object-contain brightness-110"
               />
-              <span className="font-outfit font-black text-xl tracking-wider text-neutral-900">
+              <span className="font-outfit font-black text-lg tracking-wider text-white">
                 MADPROTEK
               </span>
             </div>
             <button
               onClick={() => setIsMobileMenuOpen(false)}
-              className="text-neutral-900 hover:text-amber-700 p-2"
+              className="text-white hover:text-amber-400 p-2 rounded-lg bg-neutral-900"
               aria-label="Close Menu"
             >
-              <X className="w-6 h-6" />
+              <X className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="flex flex-col space-y-6 my-auto">
+          <div className="flex flex-col space-y-4 my-auto py-6">
             {navLinks.map((link) => (
               <a
                 key={link.label}
                 href={link.href}
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="font-syne text-2xl font-bold text-neutral-900 hover:text-amber-700 tracking-wider uppercase transition-colors"
+                className="font-syne text-xl sm:text-2xl font-bold text-white hover:text-amber-400 tracking-wider uppercase transition-colors"
               >
                 {link.label}
               </a>
             ))}
+            <a
+              href="/my-ticket"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="font-syne text-xl sm:text-2xl font-bold text-amber-400 hover:text-amber-300 tracking-wider uppercase transition-colors pt-2"
+            >
+              MY TICKET DASHBOARD
+            </a>
           </div>
 
-          <div className="w-full">
+          <div className="w-full pt-4 border-t border-neutral-800">
             <a
               href="#registration"
               onClick={() => setIsMobileMenuOpen(false)}
-              className="w-full py-4 bg-amber-600 text-white flex items-center justify-center font-syne font-extrabold text-sm tracking-wider uppercase shadow-md"
+              className="w-full py-3.5 bg-amber-600 hover:bg-amber-700 text-white flex items-center justify-center font-syne font-extrabold text-xs sm:text-sm tracking-wider uppercase rounded-lg shadow-lg"
             >
               REGISTER YOUR 4X4 RIG
             </a>
-            <div className="text-center text-[10px] font-mono tracking-widest text-neutral-500 mt-4">
-              14–15 NOV 2026 // URIGAM VILLAGE
+            <div className="text-center text-[10px] font-mono tracking-widest text-neutral-400 mt-3">
+              14–15 NOV 2026 // URIGAM PROVING GROUND
             </div>
           </div>
         </div>

@@ -38,6 +38,13 @@ export async function GET(request: NextRequest) {
           payment_amount: paymentItem?.payment_amount || registration.total_amount,
           status: "SLOT_CONFIRMED",
         });
+
+        try {
+          const { triggerPaymentThankYouWhatsApp } = await import("@/lib/whatsapp");
+          await triggerPaymentThankYouWhatsApp(registration.id);
+        } catch (waErr) {
+          console.error("[Cashfree Return] Error triggering WhatsApp thank-you:", waErr);
+        }
       }
 
       return NextResponse.redirect(

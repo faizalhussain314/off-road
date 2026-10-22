@@ -24,7 +24,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://madprotek.com"),
+  metadataBase: new URL("https://adventure.madprotekcorp.com"),
   title: "MADPROTEK Adventure Trail 2026 | 4x4 Off-Road Experience",
   description:
     "MADPROTEK Adventure Trail 2026 — a two-day technical 4x4 off-road experience at Urigam Village near the Hosur–Bengaluru corridor, featuring 15+ natural and technical obstacles and 50+ registrations.",
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
     title: "MADPROTEK Adventure Trail 2026 | 4x4 Off-Road Experience",
     description:
       "A two-day technical 4x4 off-road experience at Urigam Village near the Hosur–Bengaluru corridor. 15+ natural and technical obstacles. 50+ registrations.",
-    url: "https://madprotek.com",
+    url: "https://adventure.madprotekcorp.com",
     siteName: "MADPROTEK Adventure Trail",
     images: [
       {
@@ -61,6 +61,18 @@ export const metadata: Metadata = {
     title: "MADPROTEK Adventure Trail 2026",
     description: "South India's Premier Off-Road Technical Proving Ground. 14–15 November 2026.",
     images: ["/video-poster.webp"],
+  },
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/favicon.png", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/icon.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/apple-icon.png", sizes: "180x180", type: "image/png" },
+    ],
   },
 };
 

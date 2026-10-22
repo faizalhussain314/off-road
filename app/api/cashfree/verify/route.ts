@@ -91,6 +91,14 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Mandatory: Automatically send WhatsApp Thank-You message to participant
+      try {
+        const { triggerPaymentThankYouWhatsApp } = await import("@/lib/whatsapp");
+        await triggerPaymentThankYouWhatsApp(registration.id);
+      } catch (waErr) {
+        console.error("[Cashfree Verify] Error triggering WhatsApp thank-you:", waErr);
+      }
+
       return NextResponse.json({
         success: true,
         verified: true,

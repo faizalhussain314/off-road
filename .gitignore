@@ -20,6 +20,8 @@ dist-ssr
 build.txt
 tsconfig.tsbuildinfo
 antigravity_deploy_key*
+public/uploads/*
+!public/uploads/.gitkeep
 
 
 # Editor directories and files

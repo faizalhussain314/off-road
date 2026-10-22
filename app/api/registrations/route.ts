@@ -149,6 +149,10 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const { requireAdmin } = await import("@/lib/adminAuth");
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
   try {
     await initDb();
     const body = await request.json();
@@ -158,9 +162,22 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: false, error: "ID is required" }, { status: 400 });
     }
 
+    const { getRegistrationById } = await import("@/lib/db");
+    const previous = await getRegistrationById(Number(id));
+
     const updated = await updateRegistration(Number(id), updates);
     if (!updated) {
       return NextResponse.json({ success: false, error: "Registration not found" }, { status: 404 });
+    }
+
+    // Trigger WhatsApp Thank-You when an administrator marks payment as PAID
+    if (updates.payment_status === "PAID" && previous?.payment_status !== "PAID") {
+      try {
+        const { triggerPaymentThankYouWhatsApp } = await import("@/lib/whatsapp");
+        await triggerPaymentThankYouWhatsApp(Number(id));
+      } catch (waErr) {
+        console.error("Failed to trigger WhatsApp thank-you:", waErr);
+      }
     }
 
     // If status became SLOT_CONFIRMED or verification_status became VERIFIED, send notification email
@@ -190,6 +207,10 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const { requireAdmin } = await import("@/lib/adminAuth");
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
   try {
     await initDb();
     const { searchParams } = new URL(request.url);

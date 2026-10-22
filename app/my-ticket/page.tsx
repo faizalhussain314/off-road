@@ -211,9 +211,9 @@ function TicketContent() {
   const isCheckedIn = ticketData.checkin_status === "CHECKED_IN";
 
   return (
-    <div className="max-w-3xl w-full mx-auto space-y-6">
+    <div className="max-w-3xl w-full mx-auto space-y-6 print:space-y-0 print:m-0 print:p-0 print:max-w-none">
       {/* Top Header Actions */}
-      <div className="flex items-center justify-between no-print">
+      <div className="flex items-center justify-between no-print print:hidden">
         <div className="flex items-center space-x-2 text-xs font-mono">
           <span className="text-neutral-500">SIGNED IN AS:</span>
           <span className="font-bold text-neutral-900">{ticketData.driver_name}</span>
@@ -251,53 +251,97 @@ function TicketContent() {
         </div>
       </div>
 
-      {/* Verification In Progress Banner (if NOT yet verified by admin) */}
-      {!isVerified ? (
-        <div className="bg-amber-50 border-2 border-amber-400 rounded-sm p-6 sm:p-8 text-neutral-900 shadow-sm no-print">
-          <div className="flex items-start space-x-4">
-            <div className="p-3 bg-amber-200/80 rounded-full text-amber-900 shrink-0">
-              <Clock className="w-6 h-6 animate-pulse" />
-            </div>
-            <div className="space-y-2">
-              <div className="inline-flex items-center space-x-2 px-2.5 py-0.5 bg-amber-200 text-amber-900 text-[10px] font-mono font-bold tracking-wider uppercase rounded">
-                <span>STAGE: SCRUTINEERING & PAYMENT VERIFICATION</span>
-              </div>
-              <h2 className="font-outfit text-2xl font-black uppercase tracking-tight text-neutral-950">
-                REGISTRATION RECEIVED — UNDER MARSHAL REVIEW
-              </h2>
-              <p className="font-sans text-xs sm:text-sm text-neutral-700 leading-relaxed">
-                Thank you for submitting your 4x4 machine details and UPI payment confirmation. Our event marshals are currently verifying your uploaded vehicle documents and payment screenshot.
-              </p>
-
-              <div className="p-3 bg-emerald-50 border border-emerald-300 rounded text-xs text-emerald-900 font-sans">
-                <strong>WhatsApp Notification:</strong> Once payment gets verified you will get notification via WhatsApp on{" "}
-                <span className="font-mono font-bold text-emerald-800">{ticketData.whatsapp || ticketData.phone}</span>. Your scannable QR ticket pass will unlock automatically.
-              </div>
-
-              <div className="pt-3 border-t border-amber-300/60 grid grid-cols-2 sm:grid-cols-3 gap-3 font-mono text-xs">
-                <div>
-                  <span className="text-[10px] text-neutral-500 uppercase block">Reg Code</span>
-                  <span className="font-bold text-neutral-900">{ticketData.registration_code}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-neutral-500 uppercase block">UPI UTR Ref</span>
-                  <span className="font-bold text-neutral-900 truncate block">
-                    {ticketData.payment_utr || "Submitted Screenshot"}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-neutral-500 uppercase block">WhatsApp</span>
-                  <span className="font-bold text-emerald-700">{ticketData.whatsapp || ticketData.phone}</span>
-                </div>
-              </div>
-
-              <div className="pt-2 text-xs text-neutral-600 font-sans">
-                💡 <em>Once our Chief Marshal verifies your entry, your official scannable QR pass and slot number will activate here and be sent directly to your WhatsApp.</em>
-              </div>
-            </div>
+      {/* Status Matrix Card */}
+      <div className="bg-white border border-neutral-200 rounded-xl p-5 shadow-sm space-y-4 no-print print:hidden">
+        <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
+          <div>
+            <span className="text-[10px] font-mono uppercase text-neutral-400 block tracking-wider">
+              REGISTRATION ID
+            </span>
+            <span className="font-outfit font-black text-xl text-neutral-900">
+              {ticketData.registration_code}
+            </span>
+          </div>
+          <div className="text-right">
+            <span className="text-[10px] font-mono uppercase text-neutral-400 block tracking-wider">
+              PACKAGE
+            </span>
+            <span className="font-outfit font-bold text-xs text-neutral-800">
+              {ticketData.experience_type} ({ticketData.experience_date})
+            </span>
           </div>
         </div>
-      ) : null}
+
+        {/* 2-Status Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* 1. Payment Status */}
+          <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200 flex flex-col justify-between">
+            <span className="text-[10px] font-mono text-neutral-500 uppercase">Payment</span>
+            <span
+              className={`font-mono text-xs font-bold mt-1 px-2 py-0.5 rounded text-center ${
+                ticketData.payment_status === "PAID"
+                  ? "bg-emerald-100 text-emerald-800"
+                  : ticketData.payment_status === "REJECTED"
+                  ? "bg-red-100 text-red-800"
+                  : "bg-amber-100 text-amber-800"
+              }`}
+            >
+              {ticketData.payment_status || "PENDING"}
+            </span>
+          </div>
+
+          {/* 2. Ticket Status */}
+          <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200 flex flex-col justify-between">
+            <span className="text-[10px] font-mono text-neutral-500 uppercase">Ticket Issuance</span>
+            <span
+              className={`font-mono text-xs font-bold mt-1 px-2 py-0.5 rounded text-center ${
+                ticketData.ticket_status === "ISSUED"
+                  ? "bg-emerald-100 text-emerald-800"
+                  : ticketData.ticket_status === "REVOKED"
+                  ? "bg-red-100 text-red-800"
+                  : "bg-amber-100 text-amber-800"
+              }`}
+            >
+              {ticketData.ticket_status === "ISSUED" ? "ISSUED" : "PENDING"}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Official Guidance Banner (Verbatim from API/Requirements) */}
+      <div
+        className={`p-5 sm:p-6 rounded-xl border-2 no-print print:hidden ${
+          isVerified
+            ? "bg-emerald-50 border-emerald-400 text-emerald-950"
+            : ticketData.payment_status === "PAID"
+            ? "bg-amber-50 border-amber-400 text-amber-950"
+            : ticketData.payment_status === "REJECTED"
+            ? "bg-red-50 border-red-400 text-red-950"
+            : "bg-blue-50 border-blue-400 text-blue-950"
+        }`}
+      >
+        <div className="flex items-start space-x-3.5">
+          {isVerified ? (
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+          ) : ticketData.payment_status === "REJECTED" ? (
+            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+          ) : (
+            <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          )}
+          <div className="space-y-1">
+            <h3 className="font-outfit font-black text-base uppercase tracking-tight">
+              {isVerified
+                ? "ENTRY PASS ISSUED & ACTIVE"
+                : ticketData.payment_status === "PAID"
+                ? "PAYMENT RECEIVED — VERIFICATION IN PROGRESS"
+                : "REGISTRATION UNDER REVIEW"}
+            </h3>
+            <p className="text-xs sm:text-sm font-sans leading-relaxed">
+              {ticketData.guidance_message}
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Official Printable 4x4 Entry Pass Card */}
       <div
@@ -456,7 +500,7 @@ function TicketContent() {
 
       {/* Action Buttons: Download PDF / Print */}
       {isVerified && (
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4 no-print">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4 no-print print:hidden">
           <button
             onClick={handlePrint}
             className="w-full sm:w-auto px-8 py-3.5 bg-amber-600 hover:bg-amber-700 text-white font-syne font-bold text-xs tracking-wider uppercase rounded-sm shadow-md transition-all flex items-center justify-center space-x-2"
@@ -479,16 +523,16 @@ function TicketContent() {
 
 export default function MyTicketPage() {
   return (
-    <main className="min-h-screen bg-sand-50 text-neutral-900 selection:bg-amber-600 selection:text-white flex flex-col justify-between">
-      <div className="no-print">
+    <main className="min-h-screen bg-sand-50 text-neutral-900 selection:bg-amber-600 selection:text-white flex flex-col justify-between print:min-h-0 print:bg-white print:p-0 print:m-0">
+      <div className="no-print print:hidden">
         <Navbar />
       </div>
-      <div className="pt-24 sm:pt-28 pb-16 px-4 sm:px-6">
+      <div className="pt-24 sm:pt-28 pb-16 px-4 sm:px-6 print:p-0 print:m-0">
         <Suspense fallback={<div className="text-center font-mono text-xs">Loading Ticket...</div>}>
           <TicketContent />
         </Suspense>
       </div>
-      <footer className="py-6 border-t border-neutral-200 text-center text-xs font-mono text-neutral-500 no-print">
+      <footer className="py-6 border-t border-neutral-200 text-center text-xs font-mono text-neutral-500 no-print print:hidden">
         © 2026 MADPROTEK ADVENTURE TRAIL • OFFICIAL ENTRY PASS
       </footer>
     </main>
