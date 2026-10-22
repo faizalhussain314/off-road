@@ -21,6 +21,8 @@ build.txt
 tsconfig.tsbuildinfo
 server.js
 antigravity_deploy_key*
+public/uploads/*
+!public/uploads/.gitkeep
 
 
 # Editor directories and files

@@ -42,6 +42,37 @@ export interface VehicleDocuments {
   puc_expiry?: string;
   puc_uploaded?: boolean | string;
   puc_url?: string;
+  // Added in the consolidated "Vehicle Scrutineering & Legal Documents" step.
+  // All optional so older registrations remain valid.
+  dl_number?: string;
+  dl_file?: string;
+  dl_url?: string;
+  owner_auth_required?: boolean;
+  owner_auth_file?: string;
+  owner_auth_url?: string;
+  vehicle_photos?: {
+    front?: string;
+    rear?: string;
+    left?: string;
+    right?: string;
+    side?: string; // legacy single side photo
+  };
+}
+
+export type NotificationKind = "payment_thankyou" | "ticket";
+
+export interface NotificationState {
+  status: "SENDING" | "ACCEPTED" | "DELIVERED" | "READ" | "FAILED" | "NOT_CONFIGURED";
+  channel: "WHATSAPP";
+  to?: string;
+  attempts: number;
+  provider?: string;
+  message_id?: string;
+  error?: string;
+  last_attempt_at?: string;
+  accepted_at?: string;
+  delivered_at?: string;
+  read_at?: string;
 }
 
 export interface SafetyExperience {
@@ -112,7 +143,10 @@ export interface RegistrationRecord {
   driver_id_proof_url?: string;
 
   // Payment & UPI
-  payment_status?: "PENDING" | "PAID" | "FAILED" | "USER_DROPPED";
+  payment_status?: "PENDING" | "PAID" | "FAILED" | "USER_DROPPED" | "REJECTED";
+  payment_rejection_reason?: string;
+  payment_verified_by?: string;
+  payment_verified_at?: string;
   payment_amount?: number;
   payment_id?: string;
   payment_order_id?: string;
@@ -133,6 +167,20 @@ export interface RegistrationRecord {
   checkin_status?: "NOT_CHECKED_IN" | "CHECKED_IN";
   checkin_time?: string;
   verification_status?: "PENDING_VERIFICATION" | "VERIFIED" | "REJECTED";
+
+  // Review workflow (all optional; undefined = PENDING for older records)
+  document_review_status?: "PENDING" | "APPROVED" | "REJECTED";
+  document_review_reason?: string;
+  scrutineering_status?: "PENDING" | "APPROVED" | "REJECTED" | "NOT_REQUIRED";
+  scrutineering_reason?: string;
+
+  // Ticket issuance (separate from payment confirmation)
+  ticket_status?: "NOT_ISSUED" | "ISSUED" | "REVOKED";
+  ticket_issued_at?: string;
+  ticket_issued_by?: string;
+
+  // WhatsApp notification audit trail
+  notifications?: Partial<Record<NotificationKind, NotificationState>>;
 
   // Status & Metadata
   status: "PENDING_CALL" | "CALLED_FOLLOW_UP" | "SCRUTINEERING_REVIEW" | "SLOT_CONFIRMED" | "WAITLISTED" | "CANCELLED" | "CHECKED_IN";
@@ -221,6 +269,40 @@ declare global {
   var __offroad_sponsor_next_id: number | undefined;
   var __offroad_promo_next_id: number | undefined;
   var __offroad_pool: mysql.Pool | undefined;
+  var __offroad_reg_columns: Set<string> | undefined;
+}
+
+function parseJsonField(v: any) {
+  if (!v) return undefined;
+  if (typeof v !== "string") return v;
+  try {
+    return JSON.parse(v);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Maps a MySQL registrations row into a RegistrationRecord. */
+function mapRegistrationRow(r: any): RegistrationRecord {
+  return {
+    ...r,
+    passengers: r.passengers_json ? parseJsonField(r.passengers_json) : r.passengers,
+    modification_details: r.vehicle_json ? parseJsonField(r.vehicle_json) : r.modification_details,
+    documents: r.documents_json ? parseJsonField(r.documents_json) : r.documents,
+    safety_experience: r.safety_json ? parseJsonField(r.safety_json) : r.safety_experience,
+    notifications: r.notifications_json ? parseJsonField(r.notifications_json) : r.notifications,
+    payment_raw_response: parseJsonField(r.payment_raw_response),
+    created_at: new Date(r.created_at).toISOString(),
+    updated_at: new Date(r.updated_at).toISOString(),
+  };
+}
+
+async function getRegistrationColumns(p: mysql.Pool): Promise<Set<string>> {
+  if (globalThis.__offroad_reg_columns) return globalThis.__offroad_reg_columns;
+  const [rows]: any = await p.query("SHOW COLUMNS FROM registrations");
+  const cols = new Set<string>((rows || []).map((c: any) => String(c.Field)));
+  globalThis.__offroad_reg_columns = cols;
+  return cols;
 }
 
 if (!globalThis.__offroad_registrations) {
@@ -345,6 +427,25 @@ export async function initDb(): Promise<void> {
       "ALTER TABLE registrations ADD COLUMN payment_raw_response LONGTEXT NULL",
       "ALTER TABLE registrations ADD COLUMN promo_code VARCHAR(100) NULL",
       "ALTER TABLE registrations ADD COLUMN discount_amount DECIMAL(10,2) DEFAULT 0",
+      // Fields that already existed in the TypeScript model / JSON store but had no MySQL column
+      "ALTER TABLE registrations ADD COLUMN payment_screenshot_url VARCHAR(500) NULL",
+      "ALTER TABLE registrations ADD COLUMN payment_utr VARCHAR(100) NULL",
+      "ALTER TABLE registrations ADD COLUMN ticket_qr_token VARCHAR(100) NULL",
+      "ALTER TABLE registrations ADD COLUMN checkin_status VARCHAR(50) DEFAULT 'NOT_CHECKED_IN'",
+      "ALTER TABLE registrations ADD COLUMN checkin_time VARCHAR(100) NULL",
+      "ALTER TABLE registrations ADD COLUMN verification_status VARCHAR(50) DEFAULT 'PENDING_VERIFICATION'",
+      // Review / ticket / notification workflow
+      "ALTER TABLE registrations ADD COLUMN payment_rejection_reason TEXT NULL",
+      "ALTER TABLE registrations ADD COLUMN payment_verified_by VARCHAR(100) NULL",
+      "ALTER TABLE registrations ADD COLUMN payment_verified_at VARCHAR(100) NULL",
+      "ALTER TABLE registrations ADD COLUMN document_review_status VARCHAR(50) NULL",
+      "ALTER TABLE registrations ADD COLUMN document_review_reason TEXT NULL",
+      "ALTER TABLE registrations ADD COLUMN scrutineering_status VARCHAR(50) NULL",
+      "ALTER TABLE registrations ADD COLUMN scrutineering_reason TEXT NULL",
+      "ALTER TABLE registrations ADD COLUMN ticket_status VARCHAR(50) NULL",
+      "ALTER TABLE registrations ADD COLUMN ticket_issued_at VARCHAR(100) NULL",
+      "ALTER TABLE registrations ADD COLUMN ticket_issued_by VARCHAR(100) NULL",
+      "ALTER TABLE registrations ADD COLUMN notifications_json LONGTEXT NULL",
     ];
 
     for (const q of safeAlterQueries) {
@@ -354,6 +455,7 @@ export async function initDb(): Promise<void> {
         // Column may already exist, ignore safely
       }
     }
+    globalThis.__offroad_reg_columns = undefined; // refresh column cache after migrations
 
     await p.query(`
       CREATE TABLE IF NOT EXISTS system_settings (
@@ -422,16 +524,7 @@ export async function getRegistrations(filters?: {
 
       query += " ORDER BY slot_number IS NULL, slot_number ASC, created_at DESC";
       const [rows]: any = await p.query(query, params);
-      return rows.map((r: any) => ({
-        ...r,
-        passengers: r.passengers_json ? JSON.parse(r.passengers_json) : r.passengers,
-        modification_details: r.vehicle_json ? JSON.parse(r.vehicle_json) : r.modification_details,
-        documents: r.documents_json ? JSON.parse(r.documents_json) : r.documents,
-        safety_experience: r.safety_json ? JSON.parse(r.safety_json) : r.safety_experience,
-        payment_raw_response: r.payment_raw_response ? (typeof r.payment_raw_response === "string" ? JSON.parse(r.payment_raw_response) : r.payment_raw_response) : undefined,
-        created_at: new Date(r.created_at).toISOString(),
-        updated_at: new Date(r.updated_at).toISOString(),
-      }));
+      return rows.map((r: any) => mapRegistrationRow(r));
     } catch (err) {
       console.error("[DB Adapter] MySQL query failed, falling back to local store:", err);
     }
@@ -476,17 +569,7 @@ export async function getRegistrationById(id: number): Promise<RegistrationRecor
       const p = getPool();
       const [rows]: any = await p.query("SELECT * FROM registrations WHERE id = ? LIMIT 1", [id]);
       if (Array.isArray(rows) && rows.length > 0) {
-        const r = rows[0];
-        return {
-          ...r,
-          passengers: r.passengers_json ? JSON.parse(r.passengers_json) : r.passengers,
-          modification_details: r.vehicle_json ? JSON.parse(r.vehicle_json) : r.modification_details,
-          documents: r.documents_json ? JSON.parse(r.documents_json) : r.documents,
-          safety_experience: r.safety_json ? JSON.parse(r.safety_json) : r.safety_experience,
-          payment_raw_response: r.payment_raw_response ? (typeof r.payment_raw_response === "string" ? JSON.parse(r.payment_raw_response) : r.payment_raw_response) : undefined,
-          created_at: new Date(r.created_at).toISOString(),
-          updated_at: new Date(r.updated_at).toISOString(),
-        };
+        return mapRegistrationRow(rows[0]);
       }
     } catch (err) {
       console.error("[DB Adapter] MySQL getRegistrationById error:", err);
@@ -507,17 +590,7 @@ export async function getRegistrationByOrderId(orderId: string): Promise<Registr
         [orderId, orderId]
       );
       if (Array.isArray(rows) && rows.length > 0) {
-        const r = rows[0];
-        return {
-          ...r,
-          passengers: r.passengers_json ? JSON.parse(r.passengers_json) : r.passengers,
-          modification_details: r.vehicle_json ? JSON.parse(r.vehicle_json) : r.modification_details,
-          documents: r.documents_json ? JSON.parse(r.documents_json) : r.documents,
-          safety_experience: r.safety_json ? JSON.parse(r.safety_json) : r.safety_experience,
-          payment_raw_response: r.payment_raw_response ? (typeof r.payment_raw_response === "string" ? JSON.parse(r.payment_raw_response) : r.payment_raw_response) : undefined,
-          created_at: new Date(r.created_at).toISOString(),
-          updated_at: new Date(r.updated_at).toISOString(),
-        };
+        return mapRegistrationRow(rows[0]);
       }
     } catch (err) {
       console.error("[DB Adapter] MySQL getRegistrationByOrderId error:", err);
@@ -642,16 +715,35 @@ export async function updateRegistration(
   globalThis.__offroad_registrations = store;
   saveToFile(REG_FILE, store);
 
-  // Try MySQL
+  await mirrorUpdateToMysql(id, updates);
+  return store[index];
+}
+
+/**
+ * Mirrors a partial update to MySQL (if available). Only columns that actually exist
+ * are written, so fields that live only in the JSON store no longer make the whole
+ * UPDATE statement fail.
+ */
+async function mirrorUpdateToMysql(id: number, updates: Partial<RegistrationRecord>): Promise<void> {
   const isAvailable = await checkMysqlConnection();
   if (isAvailable) {
     try {
       const p = getPool();
+      const columns = await getRegistrationColumns(p);
       const setClauses: string[] = ["updated_at = CURRENT_TIMESTAMP"];
       const vals: any[] = [];
 
       for (const [k, v] of Object.entries(updates)) {
         if (k === "id" || k === "created_at" || k === "updated_at") continue;
+        if (k === "notifications") {
+          if (columns.has("notifications_json")) {
+            setClauses.push("notifications_json = ?");
+            vals.push(JSON.stringify(v || {}));
+          }
+          continue;
+        }
+        const mappedJsonKeys = ["passengers", "modification_details", "documents", "safety_experience", "payment_raw_response"];
+        if (!mappedJsonKeys.includes(k) && !columns.has(k)) continue;
         if (k === "passengers") {
           setClauses.push("passengers_json = ?");
           vals.push(JSON.stringify(v || []));
@@ -669,7 +761,7 @@ export async function updateRegistration(
           vals.push(v ? JSON.stringify(v) : null);
         } else {
           setClauses.push(`\`${k}\` = ?`);
-          vals.push(v !== undefined ? v : null);
+          vals.push(v !== undefined && v !== null && typeof v === "object" ? JSON.stringify(v) : v ?? null);
         }
       }
 
@@ -684,8 +776,36 @@ export async function updateRegistration(
       console.error("[DB Adapter] MySQL update error:", err);
     }
   }
+}
 
-  return store[index];
+/**
+ * Atomically applies `mutate` to a registration if `predicate` holds.
+ *
+ * The in-memory store is the authoritative copy within this (single-instance, see
+ * ecosystem.config.cjs) Node process. The check and the write happen synchronously
+ * with no `await` in between, so two concurrent requests (e.g. a retried webhook, or
+ * two marshals scanning the same QR) cannot both pass the predicate.
+ * Returns the updated record, or null if the predicate failed / record missing.
+ */
+export async function atomicUpdateRegistration(
+  id: number,
+  predicate: (r: RegistrationRecord) => boolean,
+  mutate: (r: RegistrationRecord) => Partial<RegistrationRecord>
+): Promise<{ record: RegistrationRecord; applied: boolean } | null> {
+  const store = globalThis.__offroad_registrations || [];
+  const index = store.findIndex((r) => r.id === id);
+  if (index === -1) return null;
+  const current = store[index];
+  if (!predicate(current)) {
+    return { record: current, applied: false };
+  }
+  const updates = mutate(current);
+  store[index] = { ...current, ...updates, updated_at: new Date().toISOString() };
+  globalThis.__offroad_registrations = store;
+  saveToFile(REG_FILE, store);
+  // ---- synchronous critical section ends here ----
+  await mirrorUpdateToMysql(id, updates);
+  return { record: store[index], applied: true };
 }
 
 /**
@@ -717,6 +837,12 @@ export async function updatePaymentCapture(
 
   if (!targetId) return null;
 
+  // Never downgrade a confirmed payment (e.g. a late FAILED webhook for an earlier attempt).
+  const existing = getRegistrationFromStore(targetId) || (await getRegistrationById(targetId));
+  if (existing?.payment_status === "PAID" && paymentInfo.payment_status !== "PAID") {
+    return existing;
+  }
+
   const updates: Partial<RegistrationRecord> = {
     payment_status: paymentInfo.payment_status,
     payment_id: paymentInfo.payment_id,
@@ -732,7 +858,12 @@ export async function updatePaymentCapture(
   }
 
   if (paymentInfo.payment_status === "PAID") {
-    updates.status = paymentInfo.status || "SLOT_CONFIRMED";
+    // Payment confirmation and ticket issuance are separate states: a paid registration
+    // moves to review; the slot is confirmed only when an admin issues the ticket.
+    const advanced = existing && ["SLOT_CONFIRMED", "CHECKED_IN"].includes(existing.status);
+    if (!advanced) {
+      updates.status = paymentInfo.status || "SCRUTINEERING_REVIEW";
+    }
   }
 
   return updateRegistration(targetId, updates);
@@ -1071,6 +1202,12 @@ export async function validatePromoCode(
     message: `Promo code "${promo.code}" applied! You saved ₹${discount.toLocaleString()}.`,
     promo,
   };
+}
+
+/** Synchronous read of the authoritative in-memory record (used by workflow helpers). */
+export function getRegistrationFromStore(id: number): RegistrationRecord | null {
+  const store = globalThis.__offroad_registrations || [];
+  return store.find((r) => r.id === id) || null;
 }
 
 export async function getRegistrationByCode(code: string): Promise<RegistrationRecord | null> {

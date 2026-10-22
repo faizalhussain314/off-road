@@ -37,6 +37,7 @@ import {
   Image as ImageIcon,
   FileDown,
   CheckSquare,
+  FileCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { RegistrationRecord, SponsorInquiryRecord, PromoCodeRecord } from "@/lib/db";
@@ -262,6 +263,7 @@ export default function AdminPage() {
   };
   const [isTogglingSetting, setIsTogglingSetting] = useState(false);
   const [settingsSavedNotice, setSettingsSavedNotice] = useState("");
+  const [dispatchingId, setDispatchingId] = useState<number | null>(null);
 
   // Modals
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
@@ -295,28 +297,56 @@ export default function AdminPage() {
   const [usernameInput, setUsernameInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
   const [authError, setAuthError] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   useEffect(() => {
-    const isAuth = sessionStorage.getItem("madprotek_admin_auth") === "true";
-    setIsAuthenticated(isAuth);
-    setAuthMounted(true);
+    fetch("/api/admin/auth")
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.authenticated) {
+          setIsAuthenticated(true);
+        } else {
+          const fallback = sessionStorage.getItem("madprotek_admin_auth") === "true";
+          setIsAuthenticated(fallback);
+        }
+      })
+      .catch(() => {
+        setIsAuthenticated(sessionStorage.getItem("madprotek_admin_auth") === "true");
+      })
+      .finally(() => setAuthMounted(true));
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
-    const u = usernameInput.trim().toLowerCase();
-    const p = passwordInput.trim();
-
-    if (u === "admin" && p === "madprotek2026") {
-      sessionStorage.setItem("madprotek_admin_auth", "true");
-      setIsAuthenticated(true);
-    } else {
-      setAuthError("Invalid credentials. Please verify your username and password.");
+    setIsLoggingIn(true);
+    try {
+      const res = await fetch("/api/admin/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: usernameInput.trim(),
+          password: passwordInput.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        sessionStorage.setItem("madprotek_admin_auth", "true");
+        setIsAuthenticated(true);
+      } else {
+        setAuthError(data.error || "Invalid admin credentials.");
+      }
+    } catch (err: any) {
+      setAuthError(err.message || "Failed to contact admin authentication service.");
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/admin/auth", { method: "DELETE" });
+    } catch {}
     sessionStorage.removeItem("madprotek_admin_auth");
     setIsAuthenticated(false);
     setPasswordInput("");
@@ -634,32 +664,19 @@ export default function AdminPage() {
     }
   };
 
-  // Approve Registration & Confirm Slot (issues official pass and dispatches approval email)
-  const handleApproveEntry = async (id: number) => {
+  // Separate Review & Approval Actions (Enforcing Payment != Ticket Issuance)
+  const handleApprovePayment = async (id: number) => {
     try {
-      const record = registrations.find((r) => r.id === id);
-      if (!record) return;
-
-      const maxAssignedSlot = registrations.reduce(
-        (max, r) => (r.slot_number && r.slot_number > max ? r.slot_number : max),
-        0
-      );
-      const assignedSlot = record.slot_number || maxAssignedSlot + 1;
-
-      const updates: any = {
-        status: "SLOT_CONFIRMED",
-        verification_status: "VERIFIED",
-        payment_status: "PAID",
-        payment_time: new Date().toISOString(),
-        slot_number: assignedSlot,
-      };
-
       const res = await fetch(`/api/registrations/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates),
+        body: JSON.stringify({
+          payment_status: "PAID",
+          payment_verified_by: "Admin",
+          payment_verified_at: new Date().toISOString(),
+          payment_rejection_reason: "",
+        }),
       });
-
       const json = await res.json();
       if (json.success && json.data) {
         setRegistrations((prev) =>
@@ -668,42 +685,292 @@ export default function AdminPage() {
         if (dossierRecord && dossierRecord.id === id) {
           setDossierRecord((prev) => (prev ? { ...prev, ...json.data } : null));
         }
-        setSyncMessage(`✓ Entry ${json.data.registration_code || id} approved & verified as Slot #${assignedSlot}. Entry pass activated and email dispatched!`);
-        setTimeout(() => setSyncMessage(null), 6000);
+        setSyncMessage(`✓ Payment confirmed for ${json.data.registration_code || id}. WhatsApp Thank-You message dispatched!`);
+        setTimeout(() => setSyncMessage(null), 5000);
       }
-    } catch (err) {
-      console.error("Approve entry error:", err);
+    } catch (err: any) {
+      alert("Failed to approve payment: " + err.message);
     }
   };
 
-  // Send official QR ticket pass directly via WhatsApp
-  const handleSendWhatsAppTicket = (rec: RegistrationRecord) => {
-    const rawNumber = (rec.whatsapp || rec.phone || "").replace(/[^0-9]/g, "");
-    if (!rawNumber) {
-      alert("No WhatsApp or mobile number found on record for this participant.");
+  const handleRejectPayment = async (id: number) => {
+    const reason = prompt("Enter payment rejection reason (e.g. UTR mismatch, invalid screenshot):");
+    if (reason === null) return;
+    try {
+      const res = await fetch(`/api/registrations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          payment_status: "REJECTED",
+          payment_rejection_reason: reason.trim() || "Payment verification failed",
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setRegistrations((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, ...json.data } : r))
+        );
+        if (dossierRecord && dossierRecord.id === id) {
+          setDossierRecord((prev) => (prev ? { ...prev, ...json.data } : null));
+        }
+      }
+    } catch (err: any) {
+      alert("Failed to reject payment: " + err.message);
+    }
+  };
+
+  const handleApproveDocuments = async (id: number) => {
+    try {
+      const res = await fetch(`/api/registrations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          document_review_status: "APPROVED",
+          document_review_reason: "",
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setRegistrations((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, ...json.data } : r))
+        );
+        if (dossierRecord && dossierRecord.id === id) {
+          setDossierRecord((prev) => (prev ? { ...prev, ...json.data } : null));
+        }
+        setSyncMessage(`✓ Documents marked APPROVED for ${json.data.registration_code || id}`);
+        setTimeout(() => setSyncMessage(null), 4000);
+      }
+    } catch (err: any) {
+      alert("Failed to approve documents: " + err.message);
+    }
+  };
+
+  const handleRejectDocuments = async (id: number) => {
+    const reason = prompt("Enter document rejection reason (e.g. Expired RC / Insurance, illegible DL):");
+    if (reason === null) return;
+    try {
+      const res = await fetch(`/api/registrations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          document_review_status: "REJECTED",
+          document_review_reason: reason.trim() || "Documents rejected upon review",
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setRegistrations((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, ...json.data } : r))
+        );
+        if (dossierRecord && dossierRecord.id === id) {
+          setDossierRecord((prev) => (prev ? { ...prev, ...json.data } : null));
+        }
+      }
+    } catch (err: any) {
+      alert("Failed to reject documents: " + err.message);
+    }
+  };
+
+  const handleApproveScrutineering = async (id: number) => {
+    try {
+      const res = await fetch(`/api/registrations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scrutineering_status: "APPROVED",
+          scrutineering_reason: "",
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setRegistrations((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, ...json.data } : r))
+        );
+        if (dossierRecord && dossierRecord.id === id) {
+          setDossierRecord((prev) => (prev ? { ...prev, ...json.data } : null));
+        }
+        setSyncMessage(`✓ Scrutineering marked APPROVED for ${json.data.registration_code || id}`);
+        setTimeout(() => setSyncMessage(null), 4000);
+      }
+    } catch (err: any) {
+      alert("Failed to approve scrutineering: " + err.message);
+    }
+  };
+
+  const handleRejectScrutineering = async (id: number) => {
+    const reason = prompt("Enter scrutineering rejection reason (e.g. Missing recovery points, unsafe tyres):");
+    if (reason === null) return;
+    try {
+      const res = await fetch(`/api/registrations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scrutineering_status: "REJECTED",
+          scrutineering_reason: reason.trim() || "Vehicle failed scrutineering standards",
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setRegistrations((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, ...json.data } : r))
+        );
+        if (dossierRecord && dossierRecord.id === id) {
+          setDossierRecord((prev) => (prev ? { ...prev, ...json.data } : null));
+        }
+      }
+    } catch (err: any) {
+      alert("Failed to reject scrutineering: " + err.message);
+    }
+  };
+
+  const handleIssueTicket = async (id: number) => {
+    const record = registrations.find((r) => r.id === id);
+    if (!record) return;
+    if (record.payment_status !== "PAID") {
+      alert("Cannot issue ticket pass until payment has been confirmed as PAID.");
       return;
     }
+
+    const maxAssignedSlot = registrations.reduce(
+      (max, r) => (r.slot_number && r.slot_number > max ? r.slot_number : max),
+      0
+    );
+    const assignedSlot = record.slot_number || maxAssignedSlot + 1;
+
+    try {
+      const res = await fetch(`/api/registrations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          verification_status: "VERIFIED",
+          ticket_status: "ISSUED",
+          status: "SLOT_CONFIRMED",
+          slot_number: assignedSlot,
+          ticket_issued_at: new Date().toISOString(),
+          ticket_issued_by: "Admin",
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setRegistrations((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, ...json.data } : r))
+        );
+        if (dossierRecord && dossierRecord.id === id) {
+          setDossierRecord((prev) => (prev ? { ...prev, ...json.data } : null));
+        }
+        setSyncMessage(`✓ Official Entry Pass ISSUED for ${json.data.registration_code || id} (Slot #${assignedSlot})`);
+        setTimeout(() => setSyncMessage(null), 5000);
+      }
+    } catch (err: any) {
+      alert("Failed to issue ticket: " + err.message);
+    }
+  };
+
+  // Legacy alias for existing buttons
+  const handleApproveEntry = handleIssueTicket;
+
+  // Send official QR ticket pass via server-side WhatsApp API and open direct WhatsApp chat
+  const handleSendWhatsAppTicket = async (rec: RegistrationRecord) => {
+    let forcePay = false;
+
+    // If payment is pending or not paid, offer 1-click confirmation to the admin
+    if (rec.payment_status !== "PAID") {
+      const confirmApprove = confirm(
+        `⚠️ Payment for ${rec.driver_name} (${rec.registration_code || `MAT26-${rec.id}`}) is currently "${rec.payment_status || "PENDING"}".\n\n` +
+        `Would you like to confirm payment as PAID and dispatch their official ticket pass via WhatsApp now?`
+      );
+      if (!confirmApprove) return;
+      forcePay = true;
+    }
+
+    setDispatchingId(rec.id);
+
+    const rawNumber = (rec.whatsapp || rec.phone || "").replace(/[^0-9]/g, "");
     const cleanPhone = rawNumber.length === 10 ? `91${rawNumber}` : rawNumber;
-    const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
-    const ticketUrl = `${origin}/my-ticket?code=${encodeURIComponent(rec.registration_code || `MAT26-${rec.id}`)}`;
+    
+    // Public HTTPS domain guarantee: Never send localhost or 127.0.0.1 to a participant
+    const origin =
+      typeof window !== "undefined" &&
+      !window.location.origin.includes("localhost") &&
+      !window.location.origin.includes("127.0.0.1")
+        ? window.location.origin
+        : "https://adventure.madprotekcorp.com";
+    const regCode = rec.registration_code || `MAT26-${rec.id}`;
+    const directTicketUrl = `${origin}/my-ticket?code=${encodeURIComponent(regCode)}`;
 
-    const message =
-      `🏁 *MADPROTEK 4X4 ADVENTURE TRAIL 2026* 🏁\n\n` +
-      `Hello *${rec.driver_name}*,\n\n` +
-      `Your registration and payment have been verified by Chief Marshals! Your slot is officially *CONFIRMED*.\n\n` +
-      `📋 *Registration Code:* ${rec.registration_code || `MAT26-${rec.id}`}\n` +
-      `🎯 *Assigned Slot:* ${rec.slot_number ? `Slot #${rec.slot_number}` : "Confirmed"}\n` +
-      `🚙 *Vehicle:* ${rec.vehicle_model} (${rec.vehicle_reg_number || "Verified"})\n` +
-      `📅 *Date:* ${rec.experience_date || "14–15 Nov 2026"}\n` +
-      `📍 *Location:* Urigam Proving Ground, Anchetty Corridor\n\n` +
-      `🎟️ *CLICK THE LINK BELOW TO VIEW & DOWNLOAD YOUR OFFICIAL QR TICKET:*\n` +
-      `${ticketUrl}\n\n` +
-      `📲 Please present this QR code at the scrutineering bay upon your arrival for quick clearance.\n\n` +
-      `_See you on the rocks!_\n` +
-      `*MadProTek Chief Marshal Team*`;
+    // Exact verbatim template required
+    const verbatimMessage =
+      `🏁 MADPROTEK 4X4 ADVENTURE TRAIL 2026\n` +
+      `Hello ${rec.driver_name}!\n\n` +
+      `✅ Your registration has been verified successfully!\n` +
+      `Your official event ticket is ready. Click the link below to view your ticket and QR code:\n\n` +
+      `🎟️ View Your Official Ticket:\n` +
+      `${directTicketUrl}\n\n` +
+      `Please keep your ticket ready on your phone and present the QR code at the event entrance for check-in.\n\n` +
+      `We look forward to seeing you at the adventure!\n\n` +
+      `— MadProTek Adventure Trail 2026 Team`;
 
-    const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
-    window.open(waUrl, "_blank");
+    const openWhatsAppDirectly = () => {
+      const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(verbatimMessage)}`;
+      window.open(waUrl, "_blank");
+    };
+
+    try {
+      setSyncMessage(`Dispatching WhatsApp ticket to ${rec.whatsapp || rec.phone}...`);
+
+      const res = await fetch("/api/admin/send-ticket-whatsapp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-key": "madprotek2026",
+        },
+        body: JSON.stringify({
+          registration_id: rec.id,
+          id: rec.id,
+          force_pay: forcePay,
+        }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setSyncMessage(`✓ WhatsApp ticket dispatched to ${data.recipient || rec.whatsapp || rec.phone}! Opening WhatsApp chat...`);
+        fetchRegistrations();
+        if (dossierRecord && dossierRecord.id === rec.id) {
+          setDossierRecord((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  payment_status: "PAID",
+                  verification_status: "VERIFIED",
+                  ticket_status: "ISSUED",
+                  notifications: {
+                    ...prev.notifications,
+                    ticket_dispatch: {
+                      status: data.status === "SIMULATED_SUCCESS" ? "SIMULATED_SUCCESS" : "SENT",
+                      recipient: data.recipient || rec.whatsapp || rec.phone,
+                      timestamp: new Date().toISOString(),
+                    },
+                  },
+                }
+              : null
+          );
+        }
+        // Always open WhatsApp Web/App so the admin or coordinator sees the pre-filled chat immediately
+        openWhatsAppDirectly();
+        setTimeout(() => setSyncMessage(null), 6000);
+      } else {
+        const errorMsg = data.error || "Failed to dispatch WhatsApp ticket via server API.";
+        setSyncMessage(`⚠️ ${errorMsg} Opening WhatsApp directly...`);
+        // Fallback: If server API returns an issue, still open WhatsApp Web so the admin is never blocked!
+        openWhatsAppDirectly();
+      }
+    } catch (err: any) {
+      console.error("WhatsApp dispatch error:", err);
+      setSyncMessage(`Opening WhatsApp directly (${err.message || "error"})...`);
+      openWhatsAppDirectly();
+    } finally {
+      setDispatchingId(null);
+    }
   };
 
   // Live Sync with Cashfree Payment Gateway
@@ -1494,11 +1761,18 @@ export default function AdminPage() {
                                     <span>PENDING VERIFY</span>
                                   </span>
                                   <button
-                                    onClick={() => handleApproveEntry(rec.id)}
+                                    onClick={() => handleApprovePayment(rec.id)}
                                     className="text-[9px] font-mono font-bold px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded shadow-xs"
-                                    title="Approve UPI Payment & Issue Entry Pass"
+                                    title="Approve UPI Payment & Trigger WhatsApp Thank-You"
                                   >
                                     ✓ Approve
+                                  </button>
+                                  <button
+                                    onClick={() => handleRejectPayment(rec.id)}
+                                    className="text-[9px] font-mono font-bold px-1.5 py-0.5 bg-red-100 hover:bg-red-200 text-red-700 rounded border border-red-300 shadow-xs"
+                                    title="Reject Payment"
+                                  >
+                                    ✕
                                   </button>
                                 </div>
                                 {rec.payment_utr && (
@@ -1566,13 +1840,28 @@ export default function AdminPage() {
 
                           <td className="py-3.5 px-4 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end space-x-1.5">
+                              {rec.payment_status === "PAID" && rec.ticket_status !== "ISSUED" && (
+                                <button
+                                  onClick={() => handleIssueTicket(rec.id)}
+                                  className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-mono font-bold rounded flex items-center space-x-1 shadow-xs"
+                                  title="Issue official ticket QR pass"
+                                >
+                                  <ShieldCheck className="w-3 h-3" />
+                                  <span>Issue Ticket</span>
+                                </button>
+                              )}
                               <button
                                 onClick={() => handleSendWhatsAppTicket(rec)}
-                                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-mono font-bold rounded flex items-center space-x-1 shadow-xs transition-colors"
+                                disabled={dispatchingId === rec.id}
+                                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[11px] font-mono font-bold rounded flex items-center space-x-1 shadow-xs transition-colors"
                                 title="Send official ticket with QR code link to driver via WhatsApp"
                               >
-                                <MessageSquare className="w-3 h-3" />
-                                <span>Send Ticket in WhatsApp</span>
+                                {dispatchingId === rec.id ? (
+                                  <RefreshCw className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <MessageSquare className="w-3 h-3" />
+                                )}
+                                <span>{dispatchingId === rec.id ? "Sending..." : "Send Ticket"}</span>
                               </button>
                               <button
                                 onClick={() => setDossierRecord(rec)}
@@ -2448,46 +2737,92 @@ export default function AdminPage() {
                     </div>
 
                     {/* Marshall Decision & Actions */}
-                    <div className="p-3 bg-amber-50/70 border border-amber-200 rounded space-y-2">
-                      <span className="text-[11px] font-bold text-neutral-900 block font-outfit uppercase">
-                        CHIEF MARSHAL DECISION &amp; PASS ACTIVATION
-                      </span>
-                      <p className="text-[11px] text-neutral-600 font-sans">
-                        Approving marks payment as received, assigns official slot number, unlocks driver ticket pass, and emails notification.
-                      </p>
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        {dossierRecord.verification_status !== "VERIFIED" ? (
+                    <div className="p-3 bg-amber-50/70 border border-amber-200 rounded space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-neutral-900 font-outfit uppercase">
+                          CHIEF MARSHAL DECISION CONTROLS
+                        </span>
+                        <span className="text-[10px] font-mono font-bold text-neutral-600">
+                          {dossierRecord.ticket_status === "ISSUED" ? "TICKET: ISSUED ✓" : "TICKET: UNISSUED"}
+                        </span>
+                      </div>
+
+                      {/* Payment Verification Controls */}
+                      <div className="p-2.5 bg-white rounded border border-neutral-200 space-y-1.5">
+                        <span className="text-[10px] font-mono text-neutral-500 uppercase block font-bold">
+                          1. Payment Verification (Manual UPI)
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {dossierRecord.payment_status !== "PAID" ? (
+                            <>
+                              <button
+                                onClick={() => handleApprovePayment(dossierRecord.id)}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold font-mono flex items-center space-x-1"
+                              >
+                                <Check className="w-3 h-3" />
+                                <span>Confirm Payment (PAID)</span>
+                              </button>
+                              <button
+                                onClick={() => handleRejectPayment(dossierRecord.id)}
+                                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-bold font-mono"
+                              >
+                                Reject Payment
+                              </button>
+                            </>
+                          ) : (
+                            <div className="flex items-center space-x-1 text-emerald-800 font-mono text-xs font-bold">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Payment Confirmed &amp; Verified</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Ticket Issuance Controls */}
+                      <div className="p-2.5 bg-white rounded border border-neutral-200 space-y-1.5">
+                        <span className="text-[10px] font-mono text-neutral-500 uppercase block font-bold">
+                          2. Ticket Pass Activation
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {dossierRecord.ticket_status !== "ISSUED" ? (
+                            <button
+                              onClick={() => handleIssueTicket(dossierRecord.id)}
+                              disabled={dossierRecord.payment_status !== "PAID"}
+                              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded text-xs font-bold font-mono flex items-center space-x-1.5 shadow-sm"
+                            >
+                              <ShieldCheck className="w-3.5 h-3.5" />
+                              <span>ISSUE OFFICIAL TICKET PASS</span>
+                            </button>
+                          ) : (
+                            <div className="flex items-center space-x-1.5 text-emerald-800 font-mono text-xs font-bold bg-emerald-50 px-2.5 py-1 rounded border border-emerald-300">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                              <span>ENTRY PASS ISSUED &amp; ACTIVE</span>
+                            </div>
+                          )}
+
                           <button
-                            onClick={() => handleApproveEntry(dossierRecord.id)}
-                            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold font-mono flex items-center space-x-1.5 shadow-sm transition-all"
+                            onClick={() => handleSendWhatsAppTicket(dossierRecord)}
+                            disabled={dispatchingId === dossierRecord.id}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded text-xs font-bold font-mono flex items-center space-x-1"
+                            title="Dispatch verified ticket via server WhatsApp"
                           >
-                            <Check className="w-3.5 h-3.5" />
-                            <span>APPROVE &amp; ISSUE PASS</span>
+                            {dispatchingId === dossierRecord.id ? (
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <MessageSquare className="w-3 h-3" />
+                            )}
+                            <span>{dispatchingId === dossierRecord.id ? "SENDING TICKET..." : "SEND TICKET VIA WHATSAPP"}</span>
                           </button>
-                        ) : (
-                          <div className="flex items-center space-x-2 text-emerald-800 font-bold text-xs bg-emerald-50 px-3 py-1.5 rounded border border-emerald-300">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                            <span>ENTRY PASS ACTIVE &amp; VERIFIED</span>
-                          </div>
-                        )}
 
-                        <button
-                          onClick={() => handleSendWhatsAppTicket(dossierRecord)}
-                          className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold font-mono flex items-center space-x-1.5 shadow-sm transition-all"
-                          title="Send official ticket pass with QR code link to driver via WhatsApp"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5" />
-                          <span>SEND TICKET IN WHATSAPP</span>
-                        </button>
-
-                        <Link
-                          href={`/my-ticket?search=${encodeURIComponent(dossierRecord.registration_code || dossierRecord.id.toString())}`}
-                          target="_blank"
-                          className="px-3 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded text-xs font-mono font-bold flex items-center space-x-1.5"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                          <span>OPEN TICKET PASS</span>
-                        </Link>
+                          <Link
+                            href={`/my-ticket?search=${encodeURIComponent(dossierRecord.registration_code || dossierRecord.id.toString())}`}
+                            target="_blank"
+                            className="px-2.5 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white rounded text-xs font-mono font-bold flex items-center space-x-1"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            <span>VIEW PASS</span>
+                          </Link>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2729,34 +3064,69 @@ export default function AdminPage() {
                 </div>
               )}
 
-              {/* Documents & Scrutineering Files */}
-              {dossierRecord.documents && (
-                <div>
-                  <h4 className="font-mono text-xs font-bold text-amber-800 uppercase mb-2">5. VEHICLE SCRUTINEERING DOCUMENTS</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-neutral-50 p-3 rounded font-mono text-xs">
-                    <div className="p-3 bg-white rounded border border-neutral-200 flex flex-col justify-between">
+              {/* Unified Vehicle Scrutineering: Group A (Legal Docs) & Group B (Photos) */}
+              <div className="space-y-4">
+                <div className="border border-neutral-200 rounded-lg p-4 bg-white shadow-sm space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-neutral-100 gap-2">
+                    <div className="flex items-center space-x-2">
+                      <FileCheck className="w-4 h-4 text-emerald-700" />
+                      <h4 className="font-mono text-xs font-bold text-neutral-900 uppercase">
+                        GROUP A: LEGAL DOCUMENTS REVIEW
+                      </h4>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                        dossierRecord.document_review_status === "APPROVED"
+                          ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                          : dossierRecord.document_review_status === "REJECTED"
+                          ? "bg-red-50 text-red-800 border-red-300"
+                          : "bg-amber-50 text-amber-800 border-amber-300"
+                      }`}>
+                        STATUS: {dossierRecord.document_review_status || "PENDING"}
+                      </span>
+                      {dossierRecord.document_review_status !== "APPROVED" && (
+                        <button
+                          onClick={() => handleApproveDocuments(dossierRecord.id)}
+                          className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-mono font-bold"
+                        >
+                          Approve Docs
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleRejectDocuments(dossierRecord.id)}
+                        className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-mono font-bold"
+                      >
+                        Reject Docs
+                      </button>
+                    </div>
+                  </div>
+
+                  {dossierRecord.document_review_reason && (
+                    <div className="p-2 bg-red-50 border border-red-200 rounded text-red-800 text-[11px] font-mono">
+                      Reason: {dossierRecord.document_review_reason}
+                    </div>
+                  )}
+
+                  {/* Documents Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 font-mono text-xs">
+                    {/* RC */}
+                    <div className="p-3 bg-neutral-50 rounded border border-neutral-200 flex flex-col justify-between">
                       <div>
-                        <span className="text-[10px] text-neutral-500 uppercase block">RC CERTIFICATE</span>
+                        <span className="text-[10px] text-neutral-500 uppercase block font-bold">RC CERTIFICATE</span>
                         <span className="font-bold text-neutral-900 block truncate">
-                          {dossierRecord.documents.rc_file || (dossierRecord.documents.rc_uploaded ? "RC Verified" : "Not Provided")}
+                          {dossierRecord.documents?.rc_file || (dossierRecord.documents?.rc_uploaded ? "RC Attached" : "Not Provided")}
                         </span>
                       </div>
-                      {dossierRecord.documents.rc_url ? (
-                        <div className="flex items-center space-x-2 mt-2 pt-2 border-t border-neutral-100">
-                          <a href={dossierRecord.documents.rc_url} target="_blank" rel="noreferrer" className="text-amber-700 hover:underline text-[10px] flex items-center space-x-1">
-                            <ExternalLink className="w-2.5 h-2.5" />
-                            <span>View</span>
+                      {dossierRecord.documents?.rc_url ? (
+                        <div className="flex items-center space-x-2 mt-2 pt-2 border-t border-neutral-200">
+                          <a href={dossierRecord.documents.rc_url} target="_blank" rel="noreferrer" className="text-amber-700 hover:underline text-[10px] flex items-center space-x-1 font-bold">
+                            <Eye className="w-3 h-3" />
+                            <span>View RC</span>
                           </a>
                           <span className="text-neutral-300">•</span>
-                          <a
-                            href={dossierRecord.documents.rc_url}
-                            download={`RC_${dossierRecord.registration_code || dossierRecord.id}.pdf`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-neutral-800 hover:text-amber-800 text-[10px] flex items-center space-x-1 font-bold"
-                          >
-                            <Download className="w-2.5 h-2.5 text-neutral-500" />
-                            <span>Download RC</span>
+                          <a href={dossierRecord.documents.rc_url} download={`RC_${dossierRecord.id}.pdf`} target="_blank" rel="noreferrer" className="text-neutral-800 hover:text-amber-800 text-[10px] flex items-center space-x-1 font-bold">
+                            <Download className="w-3 h-3 text-neutral-500" />
+                            <span>Download</span>
                           </a>
                         </div>
                       ) : (
@@ -2764,30 +3134,27 @@ export default function AdminPage() {
                       )}
                     </div>
 
-                    <div className="p-3 bg-white rounded border border-neutral-200 flex flex-col justify-between">
+                    {/* Insurance */}
+                    <div className="p-3 bg-neutral-50 rounded border border-neutral-200 flex flex-col justify-between">
                       <div>
-                        <span className="text-[10px] text-neutral-500 uppercase block">INSURANCE POLICY</span>
+                        <span className="text-[10px] text-neutral-500 uppercase block font-bold">INSURANCE POLICY</span>
                         <span className="font-bold text-neutral-900 block truncate">
-                          {dossierRecord.documents.insurance_company || "Policy on Record"}
+                          {dossierRecord.documents?.insurance_company || "Policy on Record"}
                         </span>
-                        <span className="text-[10px] text-neutral-500 block">Exp: {dossierRecord.documents.insurance_expiry || "Valid"}</span>
+                        <span className="text-[10px] text-neutral-500 block truncate">
+                          No: {dossierRecord.documents?.insurance_policy || "N/A"} | Exp: {dossierRecord.documents?.insurance_expiry || "Valid"}
+                        </span>
                       </div>
-                      {dossierRecord.documents.insurance_url ? (
-                        <div className="flex items-center space-x-2 mt-2 pt-2 border-t border-neutral-100">
-                          <a href={dossierRecord.documents.insurance_url} target="_blank" rel="noreferrer" className="text-amber-700 hover:underline text-[10px] flex items-center space-x-1">
-                            <ExternalLink className="w-2.5 h-2.5" />
+                      {dossierRecord.documents?.insurance_url ? (
+                        <div className="flex items-center space-x-2 mt-2 pt-2 border-t border-neutral-200">
+                          <a href={dossierRecord.documents.insurance_url} target="_blank" rel="noreferrer" className="text-amber-700 hover:underline text-[10px] flex items-center space-x-1 font-bold">
+                            <Eye className="w-3 h-3" />
                             <span>View</span>
                           </a>
                           <span className="text-neutral-300">•</span>
-                          <a
-                            href={dossierRecord.documents.insurance_url}
-                            download={`Insurance_${dossierRecord.registration_code || dossierRecord.id}.pdf`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-neutral-800 hover:text-amber-800 text-[10px] flex items-center space-x-1 font-bold"
-                          >
-                            <Download className="w-2.5 h-2.5 text-neutral-500" />
-                            <span>Download Policy</span>
+                          <a href={dossierRecord.documents.insurance_url} download={`Insurance_${dossierRecord.id}.pdf`} target="_blank" rel="noreferrer" className="text-neutral-800 hover:text-amber-800 text-[10px] flex items-center space-x-1 font-bold">
+                            <Download className="w-3 h-3 text-neutral-500" />
+                            <span>Download</span>
                           </a>
                         </div>
                       ) : (
@@ -2795,39 +3162,185 @@ export default function AdminPage() {
                       )}
                     </div>
 
-                    <div className="p-3 bg-white rounded border border-neutral-200 flex flex-col justify-between">
+                    {/* Driving Licence */}
+                    <div className="p-3 bg-neutral-50 rounded border border-neutral-200 flex flex-col justify-between">
                       <div>
-                        <span className="text-[10px] text-neutral-500 uppercase block">PUC CERTIFICATE</span>
+                        <span className="text-[10px] text-neutral-500 uppercase block font-bold">DRIVING LICENCE (DL)</span>
                         <span className="font-bold text-neutral-900 block truncate">
-                          {dossierRecord.documents.puc_number || "PUC on Record"}
+                          {dossierRecord.documents?.dl_number || (dossierRecord.driver_id_proof || "DL on Record")}
                         </span>
-                        <span className="text-[10px] text-neutral-500 block">Exp: {dossierRecord.documents.puc_expiry || "Valid"}</span>
                       </div>
-                      {dossierRecord.documents.puc_url ? (
-                        <div className="flex items-center space-x-2 mt-2 pt-2 border-t border-neutral-100">
-                          <a href={dossierRecord.documents.puc_url} target="_blank" rel="noreferrer" className="text-amber-700 hover:underline text-[10px] flex items-center space-x-1">
-                            <ExternalLink className="w-2.5 h-2.5" />
-                            <span>View</span>
+                      {dossierRecord.documents?.dl_url || dossierRecord.driver_id_proof_url ? (
+                        <div className="flex items-center space-x-2 mt-2 pt-2 border-t border-neutral-200">
+                          <a href={dossierRecord.documents?.dl_url || dossierRecord.driver_id_proof_url} target="_blank" rel="noreferrer" className="text-amber-700 hover:underline text-[10px] flex items-center space-x-1 font-bold">
+                            <Eye className="w-3 h-3" />
+                            <span>View DL</span>
                           </a>
                           <span className="text-neutral-300">•</span>
-                          <a
-                            href={dossierRecord.documents.puc_url}
-                            download={`PUC_${dossierRecord.registration_code || dossierRecord.id}.pdf`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-neutral-800 hover:text-amber-800 text-[10px] flex items-center space-x-1 font-bold"
-                          >
-                            <Download className="w-2.5 h-2.5 text-neutral-500" />
-                            <span>Download PUC</span>
+                          <a href={dossierRecord.documents?.dl_url || dossierRecord.driver_id_proof_url} download={`DL_${dossierRecord.id}.jpg`} target="_blank" rel="noreferrer" className="text-neutral-800 hover:text-amber-800 text-[10px] flex items-center space-x-1 font-bold">
+                            <Download className="w-3 h-3 text-neutral-500" />
+                            <span>Download</span>
                           </a>
                         </div>
                       ) : (
                         <span className="text-[10px] text-neutral-400 mt-2 block italic">No file attached</span>
+                      )}
+                    </div>
+
+                    {/* PUC */}
+                    <div className="p-3 bg-neutral-50 rounded border border-neutral-200 flex flex-col justify-between">
+                      <div>
+                        <span className="text-[10px] text-neutral-500 uppercase block font-bold">PUC EMISSIONS</span>
+                        <span className="font-bold text-neutral-900 block truncate">
+                          {dossierRecord.documents?.puc_number || "PUC Certificate"}
+                        </span>
+                        <span className="text-[10px] text-neutral-500 block">Exp: {dossierRecord.documents?.puc_expiry || "Valid"}</span>
+                      </div>
+                      {dossierRecord.documents?.puc_url ? (
+                        <div className="flex items-center space-x-2 mt-2 pt-2 border-t border-neutral-200">
+                          <a href={dossierRecord.documents.puc_url} target="_blank" rel="noreferrer" className="text-amber-700 hover:underline text-[10px] flex items-center space-x-1 font-bold">
+                            <Eye className="w-3 h-3" />
+                            <span>View</span>
+                          </a>
+                          <span className="text-neutral-300">•</span>
+                          <a href={dossierRecord.documents.puc_url} download={`PUC_${dossierRecord.id}.pdf`} target="_blank" rel="noreferrer" className="text-neutral-800 hover:text-amber-800 text-[10px] flex items-center space-x-1 font-bold">
+                            <Download className="w-3 h-3 text-neutral-500" />
+                            <span>Download</span>
+                          </a>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-neutral-400 mt-2 block italic">Optional / Not Provided</span>
+                      )}
+                    </div>
+
+                    {/* Owner Authorisation / NOC */}
+                    <div className="p-3 bg-neutral-50 rounded border border-neutral-200 flex flex-col justify-between">
+                      <div>
+                        <span className="text-[10px] text-neutral-500 uppercase block font-bold">OWNER AUTHORISATION / NOC</span>
+                        <span className="font-bold text-neutral-900 block truncate">
+                          {dossierRecord.documents?.owner_auth_file || (dossierRecord.documents?.owner_auth_required ? "NOC Required" : "Owner is Driver")}
+                        </span>
+                      </div>
+                      {dossierRecord.documents?.owner_auth_url ? (
+                        <div className="flex items-center space-x-2 mt-2 pt-2 border-t border-neutral-200">
+                          <a href={dossierRecord.documents.owner_auth_url} target="_blank" rel="noreferrer" className="text-amber-700 hover:underline text-[10px] flex items-center space-x-1 font-bold">
+                            <Eye className="w-3 h-3" />
+                            <span>View NOC</span>
+                          </a>
+                          <span className="text-neutral-300">•</span>
+                          <a href={dossierRecord.documents.owner_auth_url} download={`NOC_${dossierRecord.id}.pdf`} target="_blank" rel="noreferrer" className="text-neutral-800 hover:text-amber-800 text-[10px] flex items-center space-x-1 font-bold">
+                            <Download className="w-3 h-3 text-neutral-500" />
+                            <span>Download</span>
+                          </a>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-neutral-400 mt-2 block italic">
+                          {dossierRecord.documents?.owner_auth_required ? "⚠️ Pending NOC upload" : "Not Required"}
+                        </span>
                       )}
                     </div>
                   </div>
                 </div>
-              )}
+
+                {/* GROUP B: SCRUTINEERING INSPECTION PHOTOS (4 ANGLES) */}
+                <div className="border border-neutral-200 rounded-lg p-4 bg-white shadow-sm space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-neutral-100 gap-2">
+                    <div className="flex items-center space-x-2">
+                      <ImageIcon className="w-4 h-4 text-amber-600" />
+                      <h4 className="font-mono text-xs font-bold text-neutral-900 uppercase">
+                        GROUP B: VEHICLE INSPECTION PHOTOS (4 ANGLES)
+                      </h4>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                        dossierRecord.scrutineering_status === "APPROVED"
+                          ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                          : dossierRecord.scrutineering_status === "REJECTED"
+                          ? "bg-red-50 text-red-800 border-red-300"
+                          : "bg-amber-50 text-amber-800 border-amber-300"
+                      }`}>
+                        STATUS: {dossierRecord.scrutineering_status || "PENDING"}
+                      </span>
+                      {dossierRecord.scrutineering_status !== "APPROVED" && (
+                        <button
+                          onClick={() => handleApproveScrutineering(dossierRecord.id)}
+                          className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-mono font-bold"
+                        >
+                          Approve Scrutineering
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleRejectScrutineering(dossierRecord.id)}
+                        className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-mono font-bold"
+                      >
+                        Reject Scrutineering
+                      </button>
+                    </div>
+                  </div>
+
+                  {dossierRecord.scrutineering_reason && (
+                    <div className="p-2 bg-red-50 border border-red-200 rounded text-red-800 text-[11px] font-mono">
+                      Reason: {dossierRecord.scrutineering_reason}
+                    </div>
+                  )}
+
+                  {/* 4 Photos Grid */}
+                  {(() => {
+                    const photos =
+                      dossierRecord.documents?.vehicle_photos ||
+                      (dossierRecord.modification_details as any)?.photos ||
+                      {};
+                    const angles = [
+                      { key: "front", label: "1. Front Angle", url: photos.front },
+                      { key: "rear", label: "2. Rear Angle", url: photos.rear },
+                      { key: "left", label: "3. Left Profile", url: photos.left || photos.side },
+                      { key: "right", label: "4. Right Profile", url: photos.right },
+                    ];
+
+                    return (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {angles.map((ang) => (
+                          <div key={ang.key} className="p-2.5 bg-neutral-50 rounded border border-neutral-200 flex flex-col justify-between">
+                            <span className="text-[10px] font-mono font-bold uppercase text-neutral-700 block mb-1">
+                              {ang.label}
+                            </span>
+                            {ang.url ? (
+                              <>
+                                <div className="aspect-video bg-neutral-200 rounded overflow-hidden relative group">
+                                  <img src={ang.url} alt={ang.label} className="w-full h-full object-cover" />
+                                  <a
+                                    href={ang.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-mono font-bold transition-opacity"
+                                  >
+                                    View Full
+                                  </a>
+                                </div>
+                                <a
+                                  href={ang.url}
+                                  download={`Vehicle_${ang.key}_view.jpg`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="mt-1.5 text-[10px] font-mono text-amber-700 hover:underline flex items-center justify-center space-x-1 font-bold"
+                                >
+                                  <Download className="w-2.5 h-2.5" />
+                                  <span>Download</span>
+                                </a>
+                              </>
+                            ) : (
+                              <div className="aspect-video border-2 border-dashed border-neutral-300 rounded flex flex-col items-center justify-center text-neutral-400">
+                                <ImageIcon className="w-5 h-5 mb-1" />
+                                <span className="text-[9px] font-mono">Not Uploaded</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
 
               {/* Security & Captcha Status */}
               <div className="p-3 bg-neutral-100 rounded flex items-center justify-between font-mono text-xs">
@@ -2844,11 +3357,16 @@ export default function AdminPage() {
             <div className="px-6 py-3 border-t border-neutral-200 bg-sand-50 flex items-center justify-between">
               <button
                 onClick={() => handleSendWhatsAppTicket(dossierRecord)}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-mono font-bold uppercase flex items-center space-x-1.5 shadow-sm transition-colors"
+                disabled={dispatchingId === dossierRecord.id}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded text-xs font-mono font-bold uppercase flex items-center space-x-1.5 shadow-sm transition-colors"
                 title="Send official ticket with QR code to driver via WhatsApp"
               >
-                <MessageSquare className="w-3.5 h-3.5" />
-                <span>Send Ticket in WhatsApp</span>
+                {dispatchingId === dossierRecord.id ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <MessageSquare className="w-3.5 h-3.5" />
+                )}
+                <span>{dispatchingId === dossierRecord.id ? "Sending Ticket..." : "Send Ticket in WhatsApp"}</span>
               </button>
 
               <button

@@ -1,6 +1,16 @@
 [
   {
     "type": "PASSWORD_SETUP",
+    "to": "test@madprotek.com",
+    "driverName": "Test Driver",
+    "registrationCode": "MAT26-0014",
+    "setupUrl": "http://localhost:3000/set-password?token=tok_1792668278720_cl6dbof5&email=test%40madprotek.com",
+    "sentViaSmtp": false,
+    "error": "SMTP credentials (user/password) not configured.",
+    "timestamp": "2026-10-22T11:24:38.748Z"
+  },
+  {
+    "type": "PASSWORD_SETUP",
     "to": "testdevfaizal04@gmail.com",
     "driverName": "fghj",
     "registrationCode": "MAT26-0013",

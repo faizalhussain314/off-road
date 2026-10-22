@@ -19,6 +19,7 @@ import {
   Radio,
   FileCheck,
 } from "lucide-react";
+import { parseScannedTicketToken } from "@/lib/ticketUtils";
 
 export function TicketScanner({ onCheckedIn }: { onCheckedIn?: () => void } = {}) {
   const [manualCode, setManualCode] = useState("");
@@ -41,7 +42,10 @@ export function TicketScanner({ onCheckedIn }: { onCheckedIn?: () => void } = {}
     setCheckinSuccessMessage("");
 
     try {
-      const res = await fetch(`/api/admin/verify-ticket?qr_token=${encodeURIComponent(tokenOrCode.trim())}`);
+      const parsed = parseScannedTicketToken(tokenOrCode.trim());
+      const queryParam = parsed.code || parsed.token || parsed.cleanValue || tokenOrCode.trim();
+
+      const res = await fetch(`/api/admin/verify-ticket?qr_token=${encodeURIComponent(queryParam)}`);
       const data = await res.json();
 
       if (!res.ok || !data.success) {
@@ -108,8 +112,23 @@ export function TicketScanner({ onCheckedIn }: { onCheckedIn?: () => void } = {}
       );
     } catch (err: any) {
       console.error("Camera scanner start error:", err);
-      setCameraError(err.message || "Could not access camera. Please check camera permissions or use manual entry.");
+      try {
+        if (html5QrCodeRef.current) {
+          await html5QrCodeRef.current.clear();
+        }
+      } catch {}
+      html5QrCodeRef.current = null;
       setIsScanningCamera(false);
+
+      let msg = err.message || "Could not access camera.";
+      if (err.name === "NotAllowedError" || msg.includes("Permission denied")) {
+        msg = "Camera permission was denied. Please enable camera access in browser site settings or use manual code entry.";
+      } else if (typeof window !== "undefined" && window.location.protocol !== "https:" && window.location.hostname !== "localhost") {
+        msg = "Mobile browsers require HTTPS for camera permissions. Please access via HTTPS or use manual code entry.";
+      } else {
+        msg = "Camera could not be accessed. Please check camera permissions or use manual code entry.";
+      }
+      setCameraError(msg);
     }
   };
 
@@ -151,6 +170,13 @@ export function TicketScanner({ onCheckedIn }: { onCheckedIn?: () => void } = {}
 
       const data = await res.json();
       if (!res.ok || !data.success) {
+        if (res.status === 409 || data.already_checked_in) {
+          setVerifyResult((prev: any) => ({
+            ...prev,
+            is_checked_in: true,
+            checkin_time: data.data?.checkin_time || new Date().toISOString(),
+          }));
+        }
         throw new Error(data.error || "Failed to confirm check-in.");
       }
 
@@ -161,6 +187,24 @@ export function TicketScanner({ onCheckedIn }: { onCheckedIn?: () => void } = {}
         is_checked_in: true,
         checkin_time: new Date().toISOString(),
       }));
+
+      // Play triumphant check-in chime
+      try {
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+        osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.1); // E5
+        osc.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.2); // G5
+        gain.gain.value = 0.15;
+        osc.start();
+        setTimeout(() => osc.stop(), 350);
+      } catch (e) {
+        // audio context optional
+      }
+
       onCheckedIn?.();
     } catch (err: any) {
       alert(err.message || "Error during check-in.");
@@ -256,18 +300,19 @@ export function TicketScanner({ onCheckedIn }: { onCheckedIn?: () => void } = {}
               </span>
             </div>
 
-            {/* html5-qrcode reader element */}
-            <div
-              id={scannerContainerId}
-              className="w-full min-h-[260px] bg-neutral-950 rounded overflow-hidden flex items-center justify-center text-neutral-400 text-xs font-mono border border-neutral-800"
-            >
+            {/* html5-qrcode reader container with separate React overlay */}
+            <div className="relative w-full min-h-[260px] bg-neutral-950 rounded overflow-hidden border border-neutral-800 flex items-center justify-center">
+              {/* Standalone host div for html5-qrcode imperative DOM without React children */}
+              <div id={scannerContainerId} className="w-full h-full min-h-[260px]" />
+
+              {/* React-controlled standby overlay (never a child of scannerContainerId) */}
               {!isScanningCamera && (
-                <div className="text-center p-6 space-y-2">
+                <div className="absolute inset-0 bg-neutral-950 flex flex-col items-center justify-center text-center p-6 space-y-2 z-10 text-neutral-400 text-xs font-mono">
                   <Camera className="w-10 h-10 text-neutral-600 mx-auto" />
                   <p className="text-xs text-neutral-400">Camera feed is currently paused.</p>
                   <button
                     onClick={handleStartCamera}
-                    className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded text-xs font-mono font-bold uppercase"
+                    className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded text-xs font-mono font-bold uppercase transition-colors"
                   >
                     Open Camera Feed
                   </button>

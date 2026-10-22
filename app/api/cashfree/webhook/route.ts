@@ -84,6 +84,14 @@ export async function POST(request: NextRequest) {
       }
 
       console.log(`[Cashfree Webhook] Payment captured for registration ${registration.registration_code} (${orderId})`);
+
+      // Mandatory: Automatically send WhatsApp Thank-You message to participant
+      try {
+        const { triggerPaymentThankYouWhatsApp } = await import("@/lib/whatsapp");
+        await triggerPaymentThankYouWhatsApp(registration.id);
+      } catch (waErr) {
+        console.error("[Cashfree Webhook] Error triggering WhatsApp thank-you:", waErr);
+      }
     } else if (
       eventType === "PAYMENT_FAILED_WEBHOOK" ||
       paymentStatus === "FAILED" ||
