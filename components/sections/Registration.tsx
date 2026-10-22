@@ -2437,7 +2437,7 @@ export function Registration() {
                               setPromoError("");
                               setPromoSuccess("");
                             }}
-                            placeholder="Enter promo code (e.g. MAD500)"
+                            placeholder="Enter promo code (e.g. SAN500)"
                             className="flex-1 px-3.5 py-2.5 bg-neutral-50 border border-neutral-300 rounded-lg text-xs font-mono font-bold text-neutral-900 uppercase focus:outline-none focus:border-amber-500"
                           />
                           <button
