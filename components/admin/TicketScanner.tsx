@@ -483,7 +483,11 @@ export function TicketScanner({ onCheckedIn }: { onCheckedIn?: () => void } = {}
                   </div>
                   <div>
                     <span className="text-[10px] text-neutral-500 uppercase block">REG NUMBER</span>
-                    <span className="font-bold text-neutral-900">{verifyResult.vehicle_reg_number || "TN ON RECORD"}</span>
+                    <span className="font-bold text-neutral-900">
+                      {verifyResult.vehicle_reg_number && verifyResult.vehicle_reg_number !== "NOT SPECIFIED" && verifyResult.vehicle_reg_number !== "TN ON RECORD"
+                        ? verifyResult.vehicle_reg_number
+                        : "Not provided"}
+                    </span>
                   </div>
                   <div>
                     <span className="text-[10px] text-neutral-500 uppercase block">RIG CLASS</span>
