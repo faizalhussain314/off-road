@@ -38,6 +38,7 @@ import {
   FileDown,
   CheckSquare,
   FileCheck,
+  Crown,
 } from "lucide-react";
 import Link from "next/link";
 import { RegistrationRecord, SponsorInquiryRecord, PromoCodeRecord } from "@/lib/db";
