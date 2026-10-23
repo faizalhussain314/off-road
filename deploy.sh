@@ -3,7 +3,14 @@ set -e
 cd /home/madprote/adventure.madprotekcorp.com
 
 echo "==> 1. Pulling latest code from GitHub..."
+# Prevent runtime data changes (e.g. new registrations) from blocking git pull
+git stash -- data/ 2>/dev/null || true
 git pull origin main
+
+# Ensure critical Passenger .htaccess is always intact
+if [ ! -f .htaccess ]; then
+  git checkout -- .htaccess 2>/dev/null || true
+fi
 
 echo "==> 2. Activating Node.js 20 environment..."
 source /home/madprote/nodevenv/adventure.madprotekcorp.com/20/bin/activate

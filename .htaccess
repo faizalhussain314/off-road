@@ -1,0 +1,8 @@
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION BEGIN
+PassengerAppRoot "/home/madprote/adventure.madprotekcorp.com"
+PassengerBaseURI "/"
+PassengerNodejs "/home/madprote/nodevenv/adventure.madprotekcorp.com/20/bin/node"
+PassengerAppType node
+PassengerStartupFile server.js
+PassengerAppLogFile "/home/madprote/adventure.madprotekcorp.com/passenger.log"
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION END
