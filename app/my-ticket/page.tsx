@@ -420,7 +420,11 @@ function TicketContent() {
               </div>
               <div>
                 <span className="text-[10px] text-neutral-500 uppercase block">MACHINE REG NO</span>
-                <span className="font-bold text-neutral-950">{ticketData.vehicle_reg_number || "TN ON RECORD"}</span>
+                <span className="font-bold text-neutral-950">
+                  {ticketData.vehicle_reg_number && ticketData.vehicle_reg_number !== "NOT SPECIFIED" && ticketData.vehicle_reg_number !== "TN ON RECORD"
+                    ? ticketData.vehicle_reg_number
+                    : "Not provided"}
+                </span>
               </div>
               <div>
                 <span className="text-[10px] text-neutral-500 uppercase block">VEHICLE MODEL</span>

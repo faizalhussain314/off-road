@@ -1813,7 +1813,7 @@ export default function AdminPage() {
                           <td className="py-3.5 px-4 min-w-[180px]">
                             <div className="font-semibold text-neutral-900">{rec.vehicle_model}</div>
                             <div className="text-[10px] font-mono text-neutral-500">
-                              {rec.vehicle_reg_number || "REG: NOT SPECIFIED"} • {rec.rig_class}
+                              {rec.vehicle_reg_number && rec.vehicle_reg_number !== "NOT SPECIFIED" && rec.vehicle_reg_number !== "TN XX XX XXXX" ? rec.vehicle_reg_number : "Not provided"} • {rec.rig_class}
                             </div>
                           </td>
 
@@ -2708,8 +2708,8 @@ export default function AdminPage() {
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-[10px] text-neutral-500 uppercase">12-Digit UPI UTR</span>
-                        <span className="font-bold text-neutral-950 bg-white px-2 py-0.5 rounded border border-neutral-300 select-all">
-                          {dossierRecord.payment_utr || "NOT PROVIDED"}
+                        <span className="font-bold text-neutral-950 bg-white px-2 py-0.5 rounded border border-neutral-300 select-all font-mono">
+                          {dossierRecord.payment_utr || (dossierRecord.call_notes?.match(/UPI\s+UTR:\s*([A-Za-z0-9_-]+)/i)?.[1]) || "Not provided"}
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
@@ -2912,8 +2912,45 @@ export default function AdminPage() {
                   </div>
                   <div>
                     <span className="text-[10px] text-neutral-500 uppercase block">CITY / REGION</span>
-                    <span className="text-neutral-900">{dossierRecord.driver_city || "N/A"}</span>
+                    <span className="text-neutral-900 font-medium">
+                      {dossierRecord.driver_city && dossierRecord.driver_city !== "N/A" ? dossierRecord.driver_city : "Not provided"}
+                    </span>
                   </div>
+                </div>
+
+                {/* Primary Driver Identification Document */}
+                <div className="mt-2.5 p-3 bg-neutral-50 rounded border border-neutral-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 font-mono text-xs">
+                  <div>
+                    <span className="text-[10px] text-neutral-500 uppercase block font-sans">PRIMARY DRIVER IDENTIFICATION</span>
+                    <div className="text-neutral-900 font-bold mt-0.5">
+                      Selected ID Type: <span className="text-amber-800">{dossierRecord.driver_id_proof || "Aadhaar Card"}</span>
+                    </div>
+                  </div>
+                  {dossierRecord.driver_id_proof_url ? (
+                    <div className="flex items-center space-x-2">
+                      <a
+                        href={dossierRecord.driver_id_proof_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2.5 py-1 bg-white hover:bg-neutral-100 border border-neutral-300 rounded text-[11px] text-neutral-800 flex items-center space-x-1 font-bold shadow-xs"
+                      >
+                        <Eye className="w-3 h-3 text-neutral-600" />
+                        <span>View ID Document</span>
+                      </a>
+                      <a
+                        href={dossierRecord.driver_id_proof_url}
+                        download={`Driver_${dossierRecord.driver_name?.replace(/\s+/g, "_") || "Primary"}_ID.jpg`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded text-[11px] text-amber-900 font-bold flex items-center space-x-1 shadow-xs"
+                      >
+                        <Download className="w-3 h-3 text-amber-700" />
+                        <span>Download ID</span>
+                      </a>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-neutral-400 italic">No ID proof attached</span>
+                  )}
                 </div>
               </div>
 
@@ -2976,7 +3013,11 @@ export default function AdminPage() {
                   </div>
                   <div>
                     <span className="text-[10px] text-neutral-500 uppercase block">REGISTRATION NO</span>
-                    <span className="text-neutral-900">{dossierRecord.vehicle_reg_number || "TN XX XX XXXX"}</span>
+                    <span className="text-neutral-900 font-bold">
+                      {dossierRecord.vehicle_reg_number && dossierRecord.vehicle_reg_number !== "NOT SPECIFIED" && dossierRecord.vehicle_reg_number !== "TN XX XX XXXX"
+                        ? dossierRecord.vehicle_reg_number
+                        : "Not provided"}
+                    </span>
                   </div>
                   <div>
                     <span className="text-[10px] text-neutral-500 uppercase block">FUEL / TRANS</span>
