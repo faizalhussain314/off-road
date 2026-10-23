@@ -403,7 +403,7 @@ function TicketContent() {
                   ASSIGNED TRAIL SLOT
                 </span>
                 <span className="inline-block px-3 py-1 bg-neutral-900 text-amber-400 font-outfit text-xl font-black uppercase rounded-sm">
-                  {ticketData.slot_number ? `SLOT #${ticketData.slot_number}` : "SLOT CONFIRMED"}
+                  {ticketData.slot_number ? `SLOT #${ticketData.slot_number}` : "ENTRY CONFIRMED"}
                 </span>
               </div>
             </div>
@@ -432,10 +432,10 @@ function TicketContent() {
               </div>
               <div>
                 <span className="text-[10px] text-neutral-500 uppercase block">CREW / PASSENGERS</span>
-                <span className="text-neutral-800">
+                <span className="text-neutral-800 font-bold">
                   {ticketData.passengers && ticketData.passengers.length > 0
-                    ? `${ticketData.passengers.length} Crew Member(s)`
-                    : "Solo Driver"}
+                    ? `${ticketData.passengers.length + 1} Persons (Driver + ${ticketData.passengers.map((p: any) => p.name).filter(Boolean).join(", ")})`
+                    : "Solo Driver (1 Person)"}
                 </span>
               </div>
             </div>
