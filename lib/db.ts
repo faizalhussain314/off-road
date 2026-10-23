@@ -221,12 +221,25 @@ export interface SponsorInquiryRecord {
   created_at: string;
 }
 
+export interface SponsorItem {
+  id: number;
+  name: string;
+  logo_url: string;
+  tier?: string;
+  is_title: boolean;
+  is_active: boolean;
+  website_url?: string;
+  display_order: number;
+  created_at: string;
+}
+
 // Persistent JSON file fallback directory
 const DATA_DIR = path.join(process.cwd(), "data");
 const REG_FILE = path.join(DATA_DIR, "registrations.json");
 const SPONSOR_FILE = path.join(DATA_DIR, "sponsors.json");
 const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
 const PROMO_FILE = path.join(DATA_DIR, "promocodes.json");
+const SPONSORS_LIST_FILE = path.join(DATA_DIR, "sponsors_list.json");
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -265,9 +278,11 @@ declare global {
   var __offroad_sponsors: SponsorInquiryRecord[] | undefined;
   var __offroad_settings: Record<string, string> | undefined;
   var __offroad_promocodes: PromoCodeRecord[] | undefined;
+  var __offroad_sponsors_list: SponsorItem[] | undefined;
   var __offroad_next_id: number | undefined;
   var __offroad_sponsor_next_id: number | undefined;
   var __offroad_promo_next_id: number | undefined;
+  var __offroad_sponsor_item_next_id: number | undefined;
   var __offroad_pool: mysql.Pool | undefined;
   var __offroad_reg_columns: Set<string> | undefined;
 }
@@ -367,6 +382,9 @@ if (!globalThis.__offroad_sponsors) {
 if (!globalThis.__offroad_promocodes) {
   globalThis.__offroad_promocodes = loadFromFile<PromoCodeRecord[]>(PROMO_FILE, []);
 }
+if (!globalThis.__offroad_sponsors_list) {
+  globalThis.__offroad_sponsors_list = loadFromFile<SponsorItem[]>(SPONSORS_LIST_FILE, []);
+}
 if (!globalThis.__offroad_settings) {
   globalThis.__offroad_settings = loadFromFile<Record<string, string>>(SETTINGS_FILE, {
     online_registration_open: "true",
@@ -384,6 +402,10 @@ if (!globalThis.__offroad_sponsor_next_id) {
 if (!globalThis.__offroad_promo_next_id) {
   const maxPromoId = (globalThis.__offroad_promocodes || []).reduce((max, p) => Math.max(max, p.id || 0), 0);
   globalThis.__offroad_promo_next_id = maxPromoId + 1;
+}
+if (!globalThis.__offroad_sponsor_item_next_id) {
+  const maxSponsorItemId = (globalThis.__offroad_sponsors_list || []).reduce((max, s) => Math.max(max, s.id || 0), 0);
+  globalThis.__offroad_sponsor_item_next_id = maxSponsorItemId + 1;
 }
 
 let mysqlAvailable: boolean | null = null;
@@ -584,6 +606,20 @@ export async function initDb(): Promise<void> {
         billing_address TEXT,
         message TEXT,
         status VARCHAR(50) DEFAULT 'NEW',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS sponsors_list (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        logo_url TEXT NOT NULL,
+        tier VARCHAR(100) DEFAULT 'Official Partner',
+        is_title BOOLEAN DEFAULT FALSE,
+        is_active BOOLEAN DEFAULT TRUE,
+        website_url VARCHAR(500) DEFAULT '',
+        display_order INT DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
@@ -1468,5 +1504,242 @@ export async function getRegistrationByIdentifier(identifier: string): Promise<R
       return false;
     }) || null
   );
+}
+
+// ==========================================
+// SPONSORS LIST / SHOWCASE MANAGEMENT
+// ==========================================
+
+export async function getSponsorsList(activeOnly: boolean = false): Promise<SponsorItem[]> {
+  const isAvailable = await checkMysqlConnection();
+  if (isAvailable) {
+    try {
+      const p = getPool();
+      let query = "SELECT * FROM sponsors_list";
+      const params: any[] = [];
+      if (activeOnly) {
+        query += " WHERE is_active = 1";
+      }
+      query += " ORDER BY is_title DESC, display_order ASC, id ASC";
+      const [rows]: any = await p.query(query, params);
+      if (Array.isArray(rows) && rows.length > 0) {
+        return rows.map((r) => ({
+          id: r.id,
+          name: r.name,
+          logo_url: r.logo_url,
+          tier: r.tier || "Official Partner",
+          is_title: Boolean(r.is_title),
+          is_active: Boolean(r.is_active),
+          website_url: r.website_url || "",
+          display_order: Number(r.display_order) || 0,
+          created_at: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
+        }));
+      }
+    } catch (err) {
+      console.error("[DB Adapter] MySQL getSponsorsList error:", err);
+    }
+  }
+
+  // File fallback
+  const store = globalThis.__offroad_sponsors_list || loadFromFile<SponsorItem[]>(SPONSORS_LIST_FILE, []);
+  let filtered = [...store];
+  if (activeOnly) {
+    filtered = filtered.filter((s) => s.is_active);
+  }
+  return filtered.sort((a, b) => {
+    if (a.is_title && !b.is_title) return -1;
+    if (!a.is_title && b.is_title) return 1;
+    return (a.display_order || 0) - (b.display_order || 0);
+  });
+}
+
+export async function createSponsorItem(data: {
+  name: string;
+  logo_url: string;
+  tier?: string;
+  is_title?: boolean;
+  is_active?: boolean;
+  website_url?: string;
+  display_order?: number;
+}): Promise<SponsorItem> {
+  const store = globalThis.__offroad_sponsors_list || loadFromFile<SponsorItem[]>(SPONSORS_LIST_FILE, []);
+  const isTitle = Boolean(data.is_title);
+
+  if (isTitle) {
+    store.forEach((s) => {
+      s.is_title = false;
+    });
+  }
+
+  const nextId = globalThis.__offroad_sponsor_item_next_id || 1;
+  globalThis.__offroad_sponsor_item_next_id = nextId + 1;
+
+  const newSponsor: SponsorItem = {
+    id: nextId,
+    name: data.name.trim(),
+    logo_url: data.logo_url.trim(),
+    tier: data.tier?.trim() || (isTitle ? "Title Partner" : "Official Partner"),
+    is_title: isTitle,
+    is_active: data.is_active !== undefined ? Boolean(data.is_active) : true,
+    website_url: data.website_url?.trim() || "",
+    display_order: data.display_order !== undefined ? Number(data.display_order) : store.length + 1,
+    created_at: new Date().toISOString(),
+  };
+
+  store.push(newSponsor);
+  globalThis.__offroad_sponsors_list = store;
+  saveToFile(SPONSORS_LIST_FILE, store);
+
+  const isAvailable = await checkMysqlConnection();
+  if (isAvailable) {
+    try {
+      const p = getPool();
+      if (isTitle) {
+        await p.query("UPDATE sponsors_list SET is_title = 0");
+      }
+      const [result]: any = await p.query(
+        `INSERT INTO sponsors_list (name, logo_url, tier, is_title, is_active, website_url, display_order)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          newSponsor.name,
+          newSponsor.logo_url,
+          newSponsor.tier,
+          newSponsor.is_title ? 1 : 0,
+          newSponsor.is_active ? 1 : 0,
+          newSponsor.website_url,
+          newSponsor.display_order,
+        ]
+      );
+      if (result?.insertId) {
+        newSponsor.id = result.insertId;
+        const idx = store.findIndex((s) => s === newSponsor);
+        if (idx !== -1) {
+          store[idx].id = result.insertId;
+          saveToFile(SPONSORS_LIST_FILE, store);
+        }
+      }
+    } catch (err) {
+      console.error("[DB Adapter] MySQL createSponsorItem error:", err);
+    }
+  }
+
+  return newSponsor;
+}
+
+export async function updateSponsorItem(
+  id: number,
+  updates: Partial<SponsorItem>
+): Promise<SponsorItem | null> {
+  const store = globalThis.__offroad_sponsors_list || loadFromFile<SponsorItem[]>(SPONSORS_LIST_FILE, []);
+  const index = store.findIndex((s) => s.id === id);
+
+  if (updates.is_title) {
+    store.forEach((s) => {
+      if (s.id !== id) s.is_title = false;
+    });
+  }
+
+  if (index !== -1) {
+    store[index] = {
+      ...store[index],
+      ...updates,
+    };
+    globalThis.__offroad_sponsors_list = store;
+    saveToFile(SPONSORS_LIST_FILE, store);
+  }
+
+  const isAvailable = await checkMysqlConnection();
+  if (isAvailable) {
+    try {
+      const p = getPool();
+      if (updates.is_title) {
+        await p.query("UPDATE sponsors_list SET is_title = 0 WHERE id != ?", [id]);
+      }
+      const fields: string[] = [];
+      const values: any[] = [];
+      if (updates.name !== undefined) {
+        fields.push("name = ?");
+        values.push(updates.name);
+      }
+      if (updates.logo_url !== undefined) {
+        fields.push("logo_url = ?");
+        values.push(updates.logo_url);
+      }
+      if (updates.tier !== undefined) {
+        fields.push("tier = ?");
+        values.push(updates.tier);
+      }
+      if (updates.is_title !== undefined) {
+        fields.push("is_title = ?");
+        values.push(updates.is_title ? 1 : 0);
+      }
+      if (updates.is_active !== undefined) {
+        fields.push("is_active = ?");
+        values.push(updates.is_active ? 1 : 0);
+      }
+      if (updates.website_url !== undefined) {
+        fields.push("website_url = ?");
+        values.push(updates.website_url);
+      }
+      if (updates.display_order !== undefined) {
+        fields.push("display_order = ?");
+        values.push(Number(updates.display_order));
+      }
+
+      if (fields.length > 0) {
+        values.push(id);
+        await p.query(`UPDATE sponsors_list SET ${fields.join(", ")} WHERE id = ?`, values);
+      }
+    } catch (err) {
+      console.error("[DB Adapter] MySQL updateSponsorItem error:", err);
+    }
+  }
+
+  return index !== -1 ? store[index] : null;
+}
+
+export async function deleteSponsorItem(id: number): Promise<boolean> {
+  const store = globalThis.__offroad_sponsors_list || loadFromFile<SponsorItem[]>(SPONSORS_LIST_FILE, []);
+  const index = store.findIndex((s) => s.id === id);
+  if (index === -1) return false;
+
+  store.splice(index, 1);
+  globalThis.__offroad_sponsors_list = store;
+  saveToFile(SPONSORS_LIST_FILE, store);
+
+  const isAvailable = await checkMysqlConnection();
+  if (isAvailable) {
+    try {
+      const p = getPool();
+      await p.query("DELETE FROM sponsors_list WHERE id = ?", [id]);
+    } catch (err) {
+      console.error("[DB Adapter] MySQL deleteSponsorItem error:", err);
+    }
+  }
+
+  return true;
+}
+
+export async function setTitleSponsor(id: number | null): Promise<void> {
+  const store = globalThis.__offroad_sponsors_list || loadFromFile<SponsorItem[]>(SPONSORS_LIST_FILE, []);
+  store.forEach((s) => {
+    s.is_title = id !== null && s.id === id;
+  });
+  globalThis.__offroad_sponsors_list = store;
+  saveToFile(SPONSORS_LIST_FILE, store);
+
+  const isAvailable = await checkMysqlConnection();
+  if (isAvailable) {
+    try {
+      const p = getPool();
+      if (id !== null) {
+        await p.query("UPDATE sponsors_list SET is_title = CASE WHEN id = ? THEN 1 ELSE 0 END", [id]);
+      } else {
+        await p.query("UPDATE sponsors_list SET is_title = 0");
+      }
+    } catch (err) {
+      console.error("[DB Adapter] MySQL setTitleSponsor error:", err);
+    }
+  }
 }
 

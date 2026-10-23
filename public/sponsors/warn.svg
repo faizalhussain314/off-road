@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" fill="none">
+  <rect width="320" height="80" rx="8" fill="#0d1117"/>
+  <rect x="2" y="2" width="316" height="76" rx="6" stroke="#dc2626" stroke-opacity="0.3" stroke-width="1"/>
+  <!-- Red W emblem -->
+  <rect x="22" y="22" width="40" height="36" rx="4" fill="#dc2626"/>
+  <path d="M26 26 L32 50 L38 34 L42 34 L48 50 L54 26 L60 26 L51 54 L45 54 L40 38 L35 54 L29 54 L20 26 Z" fill="#ffffff"/>
+  <!-- Text -->
+  <text x="72" y="44" font-family="'Outfit', sans-serif" font-weight="900" font-size="28" letter-spacing="2" fill="#ffffff">WARN</text>
+  <text x="74" y="58" font-family="'Courier New', monospace" font-weight="700" font-size="9" letter-spacing="3" fill="#9ca3af">WINCHES &amp; RECOVERY</text>
+</svg>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" fill="none">
+  <rect width="320" height="80" rx="8" fill="#0d1117"/>
+  <rect x="2" y="2" width="316" height="76" rx="6" stroke="#f59e0b" stroke-opacity="0.3" stroke-width="1"/>
+  <!-- Shield Badge -->
+  <path d="M24 22 L38 22 C44 22 48 26 48 32 C48 44 38 52 24 58 L24 22 Z" fill="#dc2626"/>
+  <path d="M24 26 L36 26 C40 26 43 29 43 33 C43 41 35 48 24 53 Z" fill="#ffffff"/>
+  <text x="29" y="44" font-family="Arial, sans-serif" font-weight="900" font-size="16" fill="#dc2626">BF</text>
+  <!-- Brand text -->
+  <text x="56" y="42" font-family="'Outfit', 'Impact', sans-serif" font-weight="900" font-size="24" letter-spacing="1.5" fill="#ffffff">BFGoodrich</text>
+  <text x="57" y="58" font-family="'Courier New', monospace" font-weight="700" font-size="10" letter-spacing="4" fill="#f59e0b">TIRES // ALL-TERRAIN</text>
+</svg>

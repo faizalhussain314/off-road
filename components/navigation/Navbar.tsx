@@ -23,11 +23,51 @@ export function Navbar() {
   const navLinks = [
     { label: "HOME", href: "/" },
     { label: "THE TRAIL", href: "#trail" },
-    { label: "OBSTACLES", href: "#obstacles" },
+    { label: "SPONSORS", href: "#sponsors" },
     { label: "GALLERY", href: "#gallery" },
     { label: "EXPERIENCE", href: "#experience" },
     { label: "CONTACT", href: "#contact" },
   ];
+
+  const handleRegisterNavigation = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    setIsMobileMenuOpen(false);
+
+    if (typeof window !== "undefined") {
+      if (window.location.pathname !== "/") {
+        window.location.href = "/#registration";
+        return;
+      }
+      window.history.pushState(null, "", "#registration");
+      const target = document.getElementById("registration");
+      if (target) {
+        if ((window as any).__lenis) {
+          (window as any).__lenis.scrollTo(target, { offset: -64, duration: 1.2 });
+        } else {
+          const top = target.getBoundingClientRect().top + window.pageYOffset - 64;
+          window.scrollTo({ top, behavior: "smooth" });
+        }
+      }
+    }
+  };
+
+  const handleAnchorClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (href.startsWith("#") && typeof window !== "undefined" && window.location.pathname === "/") {
+      e.preventDefault();
+      setIsMobileMenuOpen(false);
+      window.history.pushState(null, "", href);
+      const targetId = href.replace("#", "");
+      const target = document.getElementById(targetId);
+      if (target) {
+        if ((window as any).__lenis) {
+          (window as any).__lenis.scrollTo(target, { offset: -64, duration: 1.2 });
+        } else {
+          const top = target.getBoundingClientRect().top + window.pageYOffset - 64;
+          window.scrollTo({ top, behavior: "smooth" });
+        }
+      }
+    }
+  };
 
   return (
     <>
@@ -66,6 +106,7 @@ export function Navbar() {
               <a
                 key={link.label}
                 href={link.href}
+                onClick={(e) => handleAnchorClick(e, link.href)}
                 className="hover:text-amber-700 transition-colors py-1 relative after:content-[''] after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[2px] after:bg-amber-600 hover:after:w-full after:transition-all after:duration-200"
               >
                 {link.label}
@@ -83,7 +124,8 @@ export function Navbar() {
             </a>
             <a
               href="#registration"
-              className="inline-flex items-center space-x-1 px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-syne font-bold text-xs tracking-wider uppercase transition-all duration-200 shadow-xs hover:scale-[1.02] rounded-sm"
+              onClick={handleRegisterNavigation}
+              className="inline-flex items-center space-x-1 px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-syne font-bold text-xs tracking-wider uppercase transition-all duration-200 shadow-xs hover:scale-[1.02] rounded-sm cursor-pointer"
             >
               <span>REGISTER 4X4</span>
               <ArrowUpRight className="w-3.5 h-3.5" />
@@ -94,7 +136,8 @@ export function Navbar() {
           <div className="flex items-center space-x-2 lg:hidden">
             <a
               href="#registration"
-              className="inline-flex items-center px-3 py-1 bg-amber-600 text-white font-syne font-bold text-[11px] tracking-wider uppercase rounded-sm"
+              onClick={handleRegisterNavigation}
+              className="inline-flex items-center px-3 py-1 bg-amber-600 text-white font-syne font-bold text-[11px] tracking-wider uppercase rounded-sm cursor-pointer"
             >
               <span>REGISTER</span>
             </a>
@@ -109,35 +152,31 @@ export function Navbar() {
         </div>
       </header>
 
-      {/* Mobile Menu Drawer Overlay */}
+      {/* Mobile Drawer Menu */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-50 bg-neutral-950/95 backdrop-blur-xl flex flex-col justify-between p-6 sm:p-8 lg:hidden animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 bg-neutral-950/95 backdrop-blur-lg lg:hidden flex flex-col justify-between p-6 sm:p-8 animate-in fade-in duration-200">
           <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
             <div className="flex items-center space-x-3">
-              <img
-                src="/M-word-logo.png"
-                alt="MadProTek Logo"
-                className="h-8 w-auto object-contain brightness-110"
-              />
-              <span className="font-outfit font-black text-lg tracking-wider text-white">
-                MADPROTEK
+              <img src="/M-word-logo.png" alt="MadProTek Logo" className="h-8 w-auto" />
+              <span className="font-outfit font-black text-white text-lg tracking-wider">
+                MADPROTEK 2026
               </span>
             </div>
             <button
               onClick={() => setIsMobileMenuOpen(false)}
-              className="text-white hover:text-amber-400 p-2 rounded-lg bg-neutral-900"
+              className="text-white hover:text-amber-400 p-2"
               aria-label="Close Menu"
             >
-              <X className="w-5 h-5" />
+              <X className="w-6 h-6" />
             </button>
           </div>
 
-          <div className="flex flex-col space-y-4 my-auto py-6">
+          <div className="flex flex-col space-y-4 my-auto">
             {navLinks.map((link) => (
               <a
                 key={link.label}
                 href={link.href}
-                onClick={() => setIsMobileMenuOpen(false)}
+                onClick={(e) => handleAnchorClick(e, link.href)}
                 className="font-syne text-xl sm:text-2xl font-bold text-white hover:text-amber-400 tracking-wider uppercase transition-colors"
               >
                 {link.label}
@@ -155,8 +194,8 @@ export function Navbar() {
           <div className="w-full pt-4 border-t border-neutral-800">
             <a
               href="#registration"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="w-full py-3.5 bg-amber-600 hover:bg-amber-700 text-white flex items-center justify-center font-syne font-extrabold text-xs sm:text-sm tracking-wider uppercase rounded-lg shadow-lg"
+              onClick={handleRegisterNavigation}
+              className="w-full py-3.5 bg-amber-600 hover:bg-amber-700 text-white flex items-center justify-center font-syne font-extrabold text-xs sm:text-sm tracking-wider uppercase rounded-lg shadow-lg cursor-pointer"
             >
               REGISTER YOUR 4X4 RIG
             </a>

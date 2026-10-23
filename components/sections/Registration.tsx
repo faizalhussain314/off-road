@@ -265,6 +265,28 @@ export function Registration() {
     loadSettings();
   }, []);
 
+  // Auto-scroll when arriving with hash (#registration or #register)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const hash = window.location.hash;
+      if (hash === "#registration" || hash === "#register") {
+        const scrollToReg = () => {
+          const el = document.getElementById("registration");
+          if (el) {
+            const top = el.getBoundingClientRect().top + window.pageYOffset - 64;
+            window.scrollTo({ top, behavior: "instant" });
+            if ((window as any).__lenis) {
+              (window as any).__lenis.scrollTo(el, { offset: -64, immediate: true });
+            }
+          }
+        };
+        scrollToReg();
+        setTimeout(scrollToReg, 100);
+        setTimeout(scrollToReg, 400);
+      }
+    }
+  }, []);
+
   // Day 2 and pricing helpers
   const isDay2 = !selectedExperience.includes("OWN 4X4");
   const isExtreme =
@@ -713,11 +735,36 @@ export function Registration() {
     ];
 
   return (
-    <section id="registration" className="relative w-full py-4 sm:py-6 lg:py-8 bg-[#0d1117] text-neutral-800 min-h-[calc(100vh-4rem)] flex flex-col justify-start">
+    <section id="registration" className="relative w-full py-4 sm:py-6 lg:py-8 bg-[#0d1117] text-neutral-800 min-h-[calc(100vh-4rem)] flex flex-col justify-start scroll-mt-16 sm:scroll-mt-20">
+      <span id="register" className="absolute -top-20 pointer-events-none" />
       {/* Background Ambience */}
       <div className="absolute inset-0 bg-[radial-gradient(#1f2937_1px,transparent_1px)] [background-size:28px_28px] opacity-30 pointer-events-none" />
 
       <div className="relative w-full max-w-6xl xl:max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+        {/* Dedicated Portal Top Bar / Back to Trail Overview */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-neutral-800/80 text-xs">
+          <a
+            href="/#trail"
+            onClick={(e) => {
+              e.preventDefault();
+              window.history.pushState(null, "", "/");
+              if ((window as any).__lenis) {
+                (window as any).__lenis.scrollTo(0, { duration: 1.2 });
+              } else {
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }
+            }}
+            className="inline-flex items-center space-x-1.5 text-neutral-400 hover:text-amber-400 font-mono tracking-wider uppercase transition-colors py-1 cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>RETURN TO TRAIL OVERVIEW</span>
+          </a>
+
+          <div className="inline-flex items-center space-x-2 text-[10px] font-mono tracking-widest text-amber-500/90 uppercase font-semibold bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            <span>OFFICIAL REGISTRATION PORTAL // 2026 EDITION</span>
+          </div>
+        </div>
         {/* ======================================================== */}
         {/* REGISTRATION CLOSED BANNER (WHEN DISABLED BY ADMIN) */}
         {/* ======================================================== */}

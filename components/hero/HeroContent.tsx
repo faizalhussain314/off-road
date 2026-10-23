@@ -153,13 +153,43 @@ export const HeroContent = forwardRef<HeroContentHandle>((_, ref) => {
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mt-6">
                     <a
                       href="#registration"
-                      className="inline-flex items-center justify-center px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white font-outfit font-extrabold text-xs tracking-wider uppercase transition-colors shadow-md"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        if (typeof window !== "undefined") {
+                          window.history.pushState(null, "", "#registration");
+                          const target = document.getElementById("registration");
+                          if (target) {
+                            if ((window as any).__lenis) {
+                              (window as any).__lenis.scrollTo(target, { offset: -64, duration: 1.2 });
+                            } else {
+                              const top = target.getBoundingClientRect().top + window.pageYOffset - 64;
+                              window.scrollTo({ top, behavior: "smooth" });
+                            }
+                          }
+                        }
+                      }}
+                      className="inline-flex items-center justify-center px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white font-outfit font-extrabold text-xs tracking-wider uppercase transition-colors shadow-md cursor-pointer"
                     >
                       REGISTER YOUR 4X4
                     </a>
                     <a
                       href="#trail"
-                      className="inline-flex items-center justify-center px-6 py-3 bg-white hover:bg-neutral-50 text-neutral-900 border border-neutral-300 font-outfit font-bold text-xs tracking-wider uppercase transition-colors"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        if (typeof window !== "undefined") {
+                          window.history.pushState(null, "", "#trail");
+                          const target = document.getElementById("trail");
+                          if (target) {
+                            if ((window as any).__lenis) {
+                              (window as any).__lenis.scrollTo(target, { offset: -64, duration: 1.2 });
+                            } else {
+                              const top = target.getBoundingClientRect().top + window.pageYOffset - 64;
+                              window.scrollTo({ top, behavior: "smooth" });
+                            }
+                          }
+                        }
+                      }}
+                      className="inline-flex items-center justify-center px-6 py-3 bg-white hover:bg-neutral-50 text-neutral-900 border border-neutral-300 font-outfit font-bold text-xs tracking-wider uppercase transition-colors cursor-pointer"
                     >
                       EXPLORE THE TRAIL
                     </a>

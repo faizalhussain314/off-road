@@ -42,6 +42,7 @@ import {
 import Link from "next/link";
 import { RegistrationRecord, SponsorInquiryRecord, PromoCodeRecord } from "@/lib/db";
 import TicketScanner from "@/components/admin/TicketScanner";
+import { SponsorShowcaseManager } from "@/components/admin/SponsorShowcaseManager";
 
 const PAYMENT_STATUS_CONFIG: Record<
   string,
@@ -158,7 +159,7 @@ const SPONSOR_STATUS_CONFIG: Record<
 };
 
 export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState<"registrations" | "sponsors" | "promocodes" | "settings" | "scan-ticket">("registrations");
+  const [activeTab, setActiveTab] = useState<"registrations" | "sponsors-showcase" | "sponsors" | "promocodes" | "settings" | "scan-ticket">("registrations");
 
   // Registrations state
   const [registrations, setRegistrations] = useState<RegistrationRecord[]>([]);
@@ -1424,6 +1425,18 @@ export default function AdminPage() {
           </button>
 
           <button
+            onClick={() => setActiveTab("sponsors-showcase")}
+            className={`px-5 py-3 font-outfit font-bold text-xs sm:text-sm uppercase tracking-wider border-b-2 flex items-center space-x-2 transition-all whitespace-nowrap ${
+              activeTab === "sponsors-showcase"
+                ? "border-amber-600 text-amber-700 bg-amber-50/70"
+                : "border-transparent text-neutral-600 hover:text-neutral-900"
+            }`}
+          >
+            <Crown className="w-4 h-4 text-amber-600" />
+            <span>Sponsors Showcase & Logos</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab("sponsors")}
             className={`px-5 py-3 font-outfit font-bold text-xs sm:text-sm uppercase tracking-wider border-b-2 flex items-center space-x-2 transition-all whitespace-nowrap ${
               activeTab === "sponsors"
@@ -1893,6 +1906,13 @@ export default function AdminPage() {
               )}
             </div>
           </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* TAB: SPONSORS SHOWCASE & LOGOS */}
+        {/* ======================================================== */}
+        {activeTab === "sponsors-showcase" && (
+          <SponsorShowcaseManager />
         )}
 
         {/* ======================================================== */}

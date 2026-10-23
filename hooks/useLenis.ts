@@ -36,6 +36,7 @@ export function useLenis() {
         });
 
         lenisRef.current = lenisInstance;
+        (window as any).__lenis = lenisInstance;
 
         lenisInstance.on("scroll", ScrollTrigger.update);
 
@@ -45,6 +46,31 @@ export function useLenis() {
 
         gsap.ticker.add(tickerCb);
         gsap.ticker.lagSmoothing(0);
+
+        // Check and handle initial hash scroll (e.g. #registration or #register)
+        const checkHashScroll = (immediate = false) => {
+          const hash = window.location.hash;
+          if (hash) {
+            const targetId = hash === "#register" ? "registration" : hash.replace("#", "");
+            const targetEl = document.getElementById(targetId);
+            if (targetEl) {
+              lenisInstance.scrollTo(targetEl, {
+                offset: -64,
+                immediate: immediate,
+                duration: immediate ? 0 : 1.2,
+              });
+            }
+          }
+        };
+
+        requestAnimationFrame(() => checkHashScroll(true));
+        setTimeout(() => checkHashScroll(true), 200);
+        setTimeout(() => checkHashScroll(true), 600);
+
+        const handleHashChange = () => {
+          checkHashScroll(false);
+        };
+        window.addEventListener("hashchange", handleHashChange);
       } catch (err) {
         console.error("Lenis setup error:", err);
       }
@@ -54,6 +80,9 @@ export function useLenis() {
 
     return () => {
       isCancelled = true;
+      if (typeof window !== "undefined") {
+        delete (window as any).__lenis;
+      }
       if (lenisInstance) {
         if (tickerCb) {
           import("gsap").then(({ default: gsap }) => {

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" fill="none">
+  <rect width="320" height="80" rx="8" fill="#0d1117"/>
+  <rect x="2" y="2" width="316" height="76" rx="6" stroke="#f59e0b" stroke-opacity="0.2" stroke-width="1"/>
+  <!-- Yellow emblem -->
+  <circle cx="44" cy="40" r="22" fill="#f59e0b"/>
+  <path d="M48 26 C43 26 36 30 35 37 C34 43 38 48 42 49 L44 58 L46 58 L45 50 C49 48 54 44 54 37 C54 31 52 26 48 26 Z" fill="#000000"/>
+  <!-- Text -->
+  <text x="78" y="38" font-family="'Outfit', sans-serif" font-weight="900" font-size="20" letter-spacing="1.5" fill="#f59e0b">OLD MAN EMU</text>
+  <text x="79" y="54" font-family="'Courier New', monospace" font-weight="700" font-size="9" letter-spacing="3" fill="#ffffff">4X4 SUSPENSION</text>
+</svg>
