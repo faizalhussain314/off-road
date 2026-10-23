@@ -1211,19 +1211,68 @@ export function getRegistrationFromStore(id: number): RegistrationRecord | null 
 }
 
 export async function getRegistrationByCode(code: string): Promise<RegistrationRecord | null> {
-  const store = globalThis.__offroad_registrations || loadFromFile<RegistrationRecord[]>(REG_FILE, []);
   const clean = code.trim().toUpperCase();
+  const isAvailable = await checkMysqlConnection();
+  if (isAvailable) {
+    try {
+      const p = getPool();
+      const [rows]: any = await p.query(
+        "SELECT * FROM registrations WHERE UPPER(registration_code) = ? LIMIT 1",
+        [clean]
+      );
+      if (Array.isArray(rows) && rows.length > 0) {
+        return mapRegistrationRow(rows[0]);
+      }
+    } catch (err) {
+      console.error("[DB Adapter] MySQL getRegistrationByCode error:", err);
+    }
+  }
+
+  const store = globalThis.__offroad_registrations || loadFromFile<RegistrationRecord[]>(REG_FILE, []);
   return store.find((r) => r.registration_code?.toUpperCase() === clean) || null;
 }
 
 export async function getRegistrationByToken(token: string): Promise<RegistrationRecord | null> {
+  const clean = token.trim();
+  const isAvailable = await checkMysqlConnection();
+  if (isAvailable) {
+    try {
+      const p = getPool();
+      const [rows]: any = await p.query(
+        "SELECT * FROM registrations WHERE set_password_token = ? LIMIT 1",
+        [clean]
+      );
+      if (Array.isArray(rows) && rows.length > 0) {
+        return mapRegistrationRow(rows[0]);
+      }
+    } catch (err) {
+      console.error("[DB Adapter] MySQL getRegistrationByToken error:", err);
+    }
+  }
+
   const store = globalThis.__offroad_registrations || loadFromFile<RegistrationRecord[]>(REG_FILE, []);
   return store.find((r) => r.set_password_token === token) || null;
 }
 
 export async function getRegistrationByQrToken(qrToken: string): Promise<RegistrationRecord | null> {
-  const store = globalThis.__offroad_registrations || loadFromFile<RegistrationRecord[]>(REG_FILE, []);
   const clean = qrToken.trim();
+  const isAvailable = await checkMysqlConnection();
+  if (isAvailable) {
+    try {
+      const p = getPool();
+      const [rows]: any = await p.query(
+        "SELECT * FROM registrations WHERE ticket_qr_token = ? OR UPPER(registration_code) = ? LIMIT 1",
+        [clean, clean.toUpperCase()]
+      );
+      if (Array.isArray(rows) && rows.length > 0) {
+        return mapRegistrationRow(rows[0]);
+      }
+    } catch (err) {
+      console.error("[DB Adapter] MySQL getRegistrationByQrToken error:", err);
+    }
+  }
+
+  const store = globalThis.__offroad_registrations || loadFromFile<RegistrationRecord[]>(REG_FILE, []);
   return (
     store.find(
       (r) =>
@@ -1234,10 +1283,30 @@ export async function getRegistrationByQrToken(qrToken: string): Promise<Registr
 }
 
 export async function getRegistrationByIdentifier(identifier: string): Promise<RegistrationRecord | null> {
-  const store = globalThis.__offroad_registrations || loadFromFile<RegistrationRecord[]>(REG_FILE, []);
   const clean = identifier.trim().toLowerCase();
   const cleanPhone = identifier.replace(/[^0-9]/g, "");
 
+  const isAvailable = await checkMysqlConnection();
+  if (isAvailable) {
+    try {
+      const p = getPool();
+      let query = "SELECT * FROM registrations WHERE LOWER(registration_code) = ? OR LOWER(email) = ?";
+      const params: any[] = [clean, clean];
+      if (cleanPhone) {
+        query += " OR REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ?";
+        params.push(`%${cleanPhone}%`);
+      }
+      query += " LIMIT 1";
+      const [rows]: any = await p.query(query, params);
+      if (Array.isArray(rows) && rows.length > 0) {
+        return mapRegistrationRow(rows[0]);
+      }
+    } catch (err) {
+      console.error("[DB Adapter] MySQL getRegistrationByIdentifier error:", err);
+    }
+  }
+
+  const store = globalThis.__offroad_registrations || loadFromFile<RegistrationRecord[]>(REG_FILE, []);
   return (
     store.find((r) => {
       if (r.email && r.email.toLowerCase() === clean) return true;
