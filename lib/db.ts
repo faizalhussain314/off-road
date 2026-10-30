@@ -182,6 +182,9 @@ export interface RegistrationRecord {
   // WhatsApp notification audit trail
   notifications?: Partial<Record<NotificationKind, NotificationState>>;
 
+  // Soft delete flag (1 = Active, 0 = Soft deleted)
+  is_active?: boolean | number;
+
   // Status & Metadata
   status: "PENDING_CALL" | "CALLED_FOLLOW_UP" | "SCRUTINEERING_REVIEW" | "SLOT_CONFIRMED" | "WAITLISTED" | "CANCELLED" | "CHECKED_IN";
   call_notes?: string;
@@ -218,6 +221,7 @@ export interface SponsorInquiryRecord {
   billing_address?: string;
   message?: string;
   status: "NEW" | "CONTACTED" | "INVOICE_SENT" | "CONFIRMED" | "DECLINED";
+  is_active?: boolean | number;
   created_at: string;
 }
 
@@ -345,6 +349,7 @@ function mapRegistrationRow(r: any): RegistrationRecord {
     safety_experience: r.safety_json ? parseJsonField(r.safety_json) : r.safety_experience,
     notifications: r.notifications_json ? parseJsonField(r.notifications_json) : r.notifications,
     payment_raw_response: parseJsonField(r.payment_raw_response),
+    is_active: r.is_active === undefined || r.is_active === null ? true : Boolean(Number(r.is_active) !== 0),
     created_at: new Date(r.created_at).toISOString(),
     updated_at: new Date(r.updated_at).toISOString(),
   };
@@ -497,6 +502,7 @@ export async function initDb(): Promise<void> {
         ticket_issued_at VARCHAR(100) NULL,
         ticket_issued_by VARCHAR(100) NULL,
         notifications_json LONGTEXT NULL,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -504,6 +510,7 @@ export async function initDb(): Promise<void> {
 
     // Safe migrations for existing MySQL tables
     const safeAlterQueries = [
+      "ALTER TABLE registrations ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1",
       "ALTER TABLE registrations ADD COLUMN payment_status VARCHAR(50) DEFAULT 'PENDING'",
       "ALTER TABLE registrations ADD COLUMN payment_amount DECIMAL(10,2) NULL",
       "ALTER TABLE registrations ADD COLUMN payment_id VARCHAR(100) NULL",
@@ -584,9 +591,56 @@ export async function initDb(): Promise<void> {
         billing_address TEXT,
         message TEXT,
         status VARCHAR(50) DEFAULT 'NEW',
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+
+    try {
+      await p.query("ALTER TABLE sponsor_inquiries ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1");
+    } catch (e) {
+      // Column may already exist, ignore safely
+    }
+
+    // One-time idempotent recovery check for Vishnu Narayanan
+    try {
+      const [existing]: any = await p.query(
+        "SELECT id FROM registrations WHERE phone = '7022277001' OR payment_utr = '630379310386' LIMIT 1"
+      );
+      if (!Array.isArray(existing) || existing.length === 0) {
+        // Insert Vishnu Narayanan cleanly with AUTO_INCREMENT
+        const [insertRes]: any = await p.query(
+          `INSERT INTO registrations (
+            driver_name, phone, whatsapp, experience_type, experience_date, pricing_tier,
+            total_amount, payment_amount, payment_status, payment_method, payment_gateway,
+            payment_utr, verification_status, status, call_notes, is_active, source
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'ONLINE_WEB')`,
+          [
+            "Vishnu Narayanan",
+            "7022277001",
+            "+917022277001",
+            "OWN 4X4 EXPERIENCE",
+            "14 NOV 2026",
+            "Regular Entry (₹6,999)",
+            6999.00,
+            6999.00,
+            "PENDING",
+            "UPI (Google Pay / PhonePe / Paytm)",
+            "UPI_DIRECT",
+            "630379310386",
+            "PENDING_VERIFICATION",
+            "SCRUTINEERING_REVIEW",
+            "UPI UTR: 630379310386",
+          ]
+        );
+        const newId = insertRes.insertId;
+        const regCode = `MAT26-${String(newId).padStart(4, "0")}`;
+        await p.query("UPDATE registrations SET registration_code = ? WHERE id = ?", [regCode, newId]);
+        console.log(`[DB Migration] Recovered Vishnu Narayanan under ID ${newId} (${regCode})`);
+      }
+    } catch (e) {
+      console.error("[DB Migration] Vishnu recovery check note:", e);
+    }
   } catch (err) {
     console.error("[DB Adapter] Error initializing MySQL tables:", err);
   }
@@ -603,7 +657,7 @@ export async function getRegistrations(filters?: {
   if (isAvailable) {
     try {
       const p = getPool();
-      let query = "SELECT * FROM registrations WHERE 1=1";
+      let query = "SELECT * FROM registrations WHERE (is_active = 1 OR is_active IS NULL)";
       const params: any[] = [];
 
       if (filters?.status && filters.status !== "ALL") {
@@ -715,141 +769,114 @@ export async function getRegistrationByOrderId(orderId: string): Promise<Registr
 export async function createRegistration(
   data: Omit<RegistrationRecord, "id" | "created_at" | "updated_at">
 ): Promise<RegistrationRecord> {
-  const store = globalThis.__offroad_registrations || [];
-  const currentId = globalThis.__offroad_next_id ?? 12;
-  globalThis.__offroad_next_id = currentId + 1;
+  const isAvailable = await checkMysqlConnection();
+  if (!isAvailable) {
+    throw new Error("Database service is currently unavailable. Please try again in a few moments.");
+  }
 
-  // Auto generate registration code MAT26-XXXX if not provided
-  const regCode = data.registration_code || `MAT26-${String(currentId).padStart(4, "0")}`;
+  const p = getPool();
+  const columns = await getRegistrationColumns(p);
 
-  const newRecord: RegistrationRecord = {
-    ...data,
-    id: currentId,
-    registration_code: regCode,
+  const now = new Date().toISOString();
+
+  // Field mapping without hardcoded id so MySQL AUTO_INCREMENT assigns the true unique ID
+  const fieldMap: Record<string, any> = {
+    driver_name: data.driver_name,
+    phone: data.phone,
+    whatsapp: data.whatsapp || null,
+    email: data.email || null,
+    driver_city: data.driver_city || null,
+    driver_age: data.driver_age || null,
+    driver_gender: data.driver_gender || null,
+    driver_id_proof: data.driver_id_proof || null,
+    driver_id_proof_url: data.driver_id_proof_url || null,
+    vehicle_owner: data.vehicle_owner || null,
+    vehicle_reg_number: data.vehicle_reg_number || null,
+    vehicle_make: data.vehicle_make || null,
+    vehicle_model: data.vehicle_model,
+    manufacturing_year: data.manufacturing_year || null,
+    vehicle_colour: data.vehicle_colour || null,
+    fuel_type: data.fuel_type || null,
+    transmission: data.transmission || null,
+    drivetrain: data.drivetrain || null,
+    is_modified: data.is_modified ? 1 : 0,
     rig_class: data.rig_class || data.experience_type || "General 4x4",
-    status: data.status || "PENDING_CALL",
+    experience_type: data.experience_type || null,
+    experience_date: data.experience_date || null,
+    pricing_tier: data.pricing_tier || null,
+    total_amount: data.total_amount || 0,
+    promo_code: data.promo_code || null,
+    discount_amount: data.discount_amount || 0,
+    passengers_json: JSON.stringify(data.passengers || []),
+    vehicle_json: JSON.stringify(data.modification_details || {}),
+    documents_json: JSON.stringify(data.documents || {}),
+    safety_json: JSON.stringify(data.safety_experience || {}),
+    modifications: data.modifications || null,
+    experience_years: data.experience_years || null,
+    spotter_name: data.spotter_name || null,
+    spotter_phone: data.spotter_phone || null,
     payment_status: data.payment_status || "PENDING",
     payment_amount: data.payment_amount !== undefined ? data.payment_amount : data.total_amount,
-    payment_order_id: data.payment_order_id,
-    payment_id: data.payment_id,
-    payment_method: data.payment_method,
-    payment_time: data.payment_time,
+    payment_id: data.payment_id || null,
+    payment_order_id: data.payment_order_id || null,
+    payment_method: data.payment_method || null,
+    payment_time: data.payment_time || null,
     payment_gateway: data.payment_gateway || "UPI_DIRECT",
-    payment_screenshot_url: data.payment_screenshot_url,
-    payment_utr: data.payment_utr ? String(data.payment_utr).trim() : undefined,
-    driver_city: data.driver_city,
-    driver_id_proof: data.driver_id_proof,
-    driver_id_proof_url: data.driver_id_proof_url,
-    vehicle_reg_number: data.vehicle_reg_number,
-    vehicle_owner: data.vehicle_owner,
-    vehicle_make: data.vehicle_make,
-    manufacturing_year: data.manufacturing_year,
-    vehicle_colour: data.vehicle_colour,
-    fuel_type: data.fuel_type,
-    transmission: data.transmission,
-    drivetrain: data.drivetrain,
-    is_modified: data.is_modified,
+    payment_raw_response: data.payment_raw_response ? JSON.stringify(data.payment_raw_response) : null,
+    payment_screenshot_url: data.payment_screenshot_url || null,
+    payment_utr: data.payment_utr ? String(data.payment_utr).trim() : null,
+    ticket_qr_token: data.ticket_qr_token || null,
+    checkin_status: data.checkin_status || "NOT_CHECKED_IN",
+    checkin_time: data.checkin_time || null,
+    verification_status: data.verification_status || "PENDING_VERIFICATION",
+    set_password_token: data.set_password_token || null,
+    is_password_set: data.is_password_set ? 1 : 0,
+    captcha_verified: data.captcha_verified ? 1 : 0,
+    status: data.status || "PENDING_CALL",
+    call_notes: data.call_notes || null,
+    slot_number: data.slot_number || null,
     source: data.source || "ONLINE_WEB",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    is_active: 1,
   };
 
-  store.unshift(newRecord);
-  globalThis.__offroad_registrations = store;
-  saveToFile(REG_FILE, store);
+  const insertCols: string[] = [];
+  const insertPlaceholders: string[] = [];
+  const insertVals: any[] = [];
 
-  // Try MySQL if available
-  const isAvailable = await checkMysqlConnection();
-  if (isAvailable) {
-    try {
-      const p = getPool();
-      const columns = await getRegistrationColumns(p);
-
-      const fieldMap: Record<string, any> = {
-        id: newRecord.id,
-        registration_code: newRecord.registration_code,
-        driver_name: newRecord.driver_name,
-        phone: newRecord.phone,
-        whatsapp: newRecord.whatsapp || null,
-        email: newRecord.email || null,
-        driver_city: newRecord.driver_city || null,
-        driver_age: newRecord.driver_age || null,
-        driver_gender: newRecord.driver_gender || null,
-        driver_id_proof: newRecord.driver_id_proof || null,
-        driver_id_proof_url: newRecord.driver_id_proof_url || null,
-        vehicle_owner: newRecord.vehicle_owner || null,
-        vehicle_reg_number: newRecord.vehicle_reg_number || null,
-        vehicle_make: newRecord.vehicle_make || null,
-        vehicle_model: newRecord.vehicle_model,
-        manufacturing_year: newRecord.manufacturing_year || null,
-        vehicle_colour: newRecord.vehicle_colour || null,
-        fuel_type: newRecord.fuel_type || null,
-        transmission: newRecord.transmission || null,
-        drivetrain: newRecord.drivetrain || null,
-        is_modified: newRecord.is_modified ? 1 : 0,
-        rig_class: newRecord.rig_class || null,
-        experience_type: newRecord.experience_type || null,
-        experience_date: newRecord.experience_date || null,
-        pricing_tier: newRecord.pricing_tier || null,
-        total_amount: newRecord.total_amount || 0,
-        promo_code: newRecord.promo_code || null,
-        discount_amount: newRecord.discount_amount || 0,
-        passengers_json: JSON.stringify(newRecord.passengers || []),
-        vehicle_json: JSON.stringify(newRecord.modification_details || {}),
-        documents_json: JSON.stringify(newRecord.documents || {}),
-        safety_json: JSON.stringify(newRecord.safety_experience || {}),
-        modifications: newRecord.modifications || null,
-        experience_years: newRecord.experience_years || null,
-        spotter_name: newRecord.spotter_name || null,
-        spotter_phone: newRecord.spotter_phone || null,
-        payment_status: newRecord.payment_status || "PENDING",
-        payment_amount: newRecord.payment_amount || 0,
-        payment_id: newRecord.payment_id || null,
-        payment_order_id: newRecord.payment_order_id || null,
-        payment_method: newRecord.payment_method || null,
-        payment_time: newRecord.payment_time || null,
-        payment_gateway: newRecord.payment_gateway || "UPI_DIRECT",
-        payment_raw_response: newRecord.payment_raw_response ? JSON.stringify(newRecord.payment_raw_response) : null,
-        payment_screenshot_url: newRecord.payment_screenshot_url || null,
-        payment_utr: newRecord.payment_utr || null,
-        ticket_qr_token: newRecord.ticket_qr_token || null,
-        checkin_status: newRecord.checkin_status || "NOT_CHECKED_IN",
-        checkin_time: newRecord.checkin_time || null,
-        verification_status: newRecord.verification_status || "PENDING_VERIFICATION",
-        set_password_token: newRecord.set_password_token || null,
-        is_password_set: newRecord.is_password_set ? 1 : 0,
-        captcha_verified: newRecord.captcha_verified ? 1 : 0,
-        status: newRecord.status,
-        call_notes: newRecord.call_notes || null,
-        slot_number: newRecord.slot_number || null,
-        source: newRecord.source,
-      };
-
-      const insertCols: string[] = [];
-      const insertPlaceholders: string[] = [];
-      const insertVals: any[] = [];
-
-      for (const [col, val] of Object.entries(fieldMap)) {
-        if (columns.has(col)) {
-          insertCols.push(`\`${col}\``);
-          insertPlaceholders.push("?");
-          insertVals.push(val);
-        }
-      }
-
-      if (insertCols.length > 0) {
-        await p.query(
-          `INSERT INTO registrations (${insertCols.join(", ")}) VALUES (${insertPlaceholders.join(", ")})
-           ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP`,
-          insertVals
-        );
-      }
-    } catch (err) {
-      console.error("[DB Adapter] MySQL insert error:", err);
+  for (const [col, val] of Object.entries(fieldMap)) {
+    if (columns.has(col)) {
+      insertCols.push(`\`${col}\``);
+      insertPlaceholders.push("?");
+      insertVals.push(val);
     }
   }
 
-  return newRecord;
+  const [insertResult]: any = await p.query(
+    `INSERT INTO registrations (${insertCols.join(", ")}) VALUES (${insertPlaceholders.join(", ")})`,
+    insertVals
+  );
+
+  const newId = Number(insertResult.insertId);
+  const finalRegCode = data.registration_code || `MAT26-${String(newId).padStart(4, "0")}`;
+
+  // Update registration_code with the true MySQL auto-increment ID
+  if (columns.has("registration_code")) {
+    await p.query("UPDATE registrations SET registration_code = ? WHERE id = ?", [finalRegCode, newId]);
+  }
+
+  const [rows]: any = await p.query("SELECT * FROM registrations WHERE id = ? LIMIT 1", [newId]);
+  if (Array.isArray(rows) && rows.length > 0) {
+    return mapRegistrationRow(rows[0]);
+  }
+
+  return {
+    ...data,
+    id: newId,
+    registration_code: finalRegCode,
+    is_active: 1,
+    created_at: now,
+    updated_at: now,
+  } as RegistrationRecord;
 }
 
 export async function updateRegistration(
@@ -1023,25 +1050,30 @@ export async function updatePaymentCapture(
 }
 
 export async function deleteRegistration(id: number): Promise<boolean> {
-  const store = globalThis.__offroad_registrations || [];
-  const index = store.findIndex((r) => r.id === id);
-  if (index === -1) return false;
-
-  store.splice(index, 1);
-  globalThis.__offroad_registrations = store;
-  saveToFile(REG_FILE, store);
-
   const isAvailable = await checkMysqlConnection();
   if (isAvailable) {
     try {
       const p = getPool();
-      await p.query("DELETE FROM registrations WHERE id = ?", [id]);
+      const [res]: any = await p.query(
+        "UPDATE registrations SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        [id]
+      );
+      return res && res.affectedRows > 0;
     } catch (err) {
-      console.error("[DB Adapter] MySQL delete error:", err);
+      console.error("[DB Adapter] MySQL soft delete error:", err);
+      return false;
     }
   }
 
-  return true;
+  // Local fallback if MySQL is offline
+  const store = globalThis.__offroad_registrations || [];
+  const rec = store.find((r) => r.id === id);
+  if (rec) {
+    rec.is_active = 0;
+    saveToFile(REG_FILE, store);
+    return true;
+  }
+  return false;
 }
 
 export async function getSystemSetting(key: string, defaultValue: string = ""): Promise<string> {
@@ -1158,7 +1190,26 @@ export async function createSponsorInquiry(data: {
 }
 
 export async function getSponsorInquiries(): Promise<SponsorInquiryRecord[]> {
-  return loadFromFile<SponsorInquiryRecord[]>(SPONSOR_FILE, globalThis.__offroad_sponsors || []);
+  const isAvailable = await checkMysqlConnection();
+  if (isAvailable) {
+    try {
+      const p = getPool();
+      const [rows]: any = await p.query(
+        "SELECT * FROM sponsor_inquiries WHERE (is_active = 1 OR is_active IS NULL) ORDER BY created_at DESC"
+      );
+      if (Array.isArray(rows)) {
+        return rows.map((r: any) => ({
+          ...r,
+          is_active: r.is_active === undefined || r.is_active === null ? true : Boolean(Number(r.is_active) !== 0),
+          created_at: new Date(r.created_at).toISOString(),
+        }));
+      }
+    } catch (e) {
+      console.error("MySQL getSponsorInquiries error:", e);
+    }
+  }
+  const store = loadFromFile<SponsorInquiryRecord[]>(SPONSOR_FILE, globalThis.__offroad_sponsors || []);
+  return store.filter((s) => s.is_active === undefined || s.is_active === null || Boolean(s.is_active));
 }
 
 export async function updateSponsorInquiry(
@@ -1192,25 +1243,26 @@ export async function updateSponsorInquiry(
 }
 
 export async function deleteSponsorInquiry(id: number): Promise<boolean> {
-  const store = globalThis.__offroad_sponsors || [];
-  const index = store.findIndex((s) => s.id === id);
-  if (index === -1) return false;
-
-  store.splice(index, 1);
-  globalThis.__offroad_sponsors = store;
-  saveToFile(SPONSOR_FILE, store);
-
   const isAvailable = await checkMysqlConnection();
   if (isAvailable) {
     try {
       const p = getPool();
-      await p.query("DELETE FROM sponsor_inquiries WHERE id = ?", [id]);
+      const [res]: any = await p.query("UPDATE sponsor_inquiries SET is_active = 0 WHERE id = ?", [id]);
+      return res && res.affectedRows > 0;
     } catch (e) {
-      console.error("MySQL delete sponsor error:", e);
+      console.error("MySQL soft delete sponsor error:", e);
+      return false;
     }
   }
 
-  return true;
+  const store = globalThis.__offroad_sponsors || [];
+  const item = store.find((s) => s.id === id);
+  if (item) {
+    item.is_active = 0;
+    saveToFile(SPONSOR_FILE, store);
+    return true;
+  }
+  return false;
 }
 
 // ==========================================
