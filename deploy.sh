@@ -22,6 +22,11 @@ chmod +x deploy.sh 2>/dev/null || true
 echo "==> 2. Activating Node.js 20 environment..."
 source /home/madprote/nodevenv/adventure.madprotekcorp.com/20/bin/activate
 
+echo "==> 2b. Running Database Migrations..."
+if [ -f scripts/migrate.js ]; then
+  node scripts/migrate.js
+fi
+
 echo "==> 3. Building Next.js application..."
 export RAYON_NUM_THREADS=1
 export NEXT_CPU_COUNT=1
