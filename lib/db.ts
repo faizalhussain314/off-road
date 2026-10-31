@@ -883,6 +883,27 @@ export async function updateRegistration(
   id: number,
   updates: Partial<RegistrationRecord>
 ): Promise<RegistrationRecord | null> {
+  const isAvailable = await checkMysqlConnection();
+  if (isAvailable) {
+    try {
+      await mirrorUpdateToMysql(id, updates);
+      const updated = await getRegistrationById(id);
+      if (updated) {
+        // Keep in-memory store in sync if present
+        const store = globalThis.__offroad_registrations || [];
+        const index = store.findIndex((r) => r.id === id);
+        if (index !== -1) {
+          store[index] = { ...store[index], ...updates, updated_at: new Date().toISOString() };
+          saveToFile(REG_FILE, store);
+        }
+        return updated;
+      }
+    } catch (e) {
+      console.error("[DB Adapter] MySQL updateRegistration error:", e);
+    }
+  }
+
+  // Memory & File fallback
   const store = globalThis.__offroad_registrations || [];
   const index = store.findIndex((r) => r.id === id);
   if (index === -1) return null;
@@ -895,7 +916,6 @@ export async function updateRegistration(
   globalThis.__offroad_registrations = store;
   saveToFile(REG_FILE, store);
 
-  await mirrorUpdateToMysql(id, updates);
   return store[index];
 }
 
