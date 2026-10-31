@@ -171,6 +171,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    if (record.is_active === false || record.is_active === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "This registration has been deactivated or cancelled. Please contact event marshals for assistance.",
+        },
+        { status: 410 }
+      );
+    }
+
     const responsePayload = await buildTicketResponse(record, undefined, request);
     return NextResponse.json(responsePayload);
   } catch (err: any) {
