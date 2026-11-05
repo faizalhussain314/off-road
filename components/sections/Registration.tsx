@@ -722,7 +722,7 @@ export function Registration() {
   const stepsList = isDay2
     ? [
       { num: 1, internalStep: 1, label: "Experience" },
-      { num: 2, internalStep: 2, label: "Participants" },
+      { num: 2, internalStep: 2, label: "Participant" },
       { num: 3, internalStep: 4, label: "Safety" },
       { num: 4, internalStep: 5, label: "Payment" },
     ]
@@ -946,7 +946,7 @@ export function Registration() {
                   <p className="text-xs text-neutral-400 font-semibold mt-1">Enjoy an Off-Road Ride with Our Team</p>
 
                   <p className="text-xs text-neutral-300 mt-3 leading-relaxed">
-                    Sit inside an organiser-provided 4x4 vehicle while an experienced off-road marshal drives you across rocky trails, streams and challenging terrain.
+                    You are in the driver's seat, with an experienced off-road marshal sitting beside you to guide, coach and ensure a safe and exciting drive across rocky trails, streams and challenging terrain.
                   </p>
 
                   {/* Inclusions */}
@@ -1200,51 +1200,58 @@ export function Registration() {
                           )}
                         </div>
 
-                        {/* Additional Participant Counter */}
-                        <div className="p-3 rounded-xl border border-orange-200 bg-orange-50/50 flex items-center justify-between">
-                          <div className="flex items-center space-x-2.5">
-                            <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-[#f05a28]">
-                              <User className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <div className="text-xs font-bold text-neutral-900">
-                                {isDay2 ? "Additional Co-Passengers / Seats" : "Additional Participant"}
+                        {/* Additional Participant Counter (Only for Day 1 Own 4x4) */}
+                        {!isDay2 ? (
+                          <div className="p-3 rounded-xl border border-orange-200 bg-orange-50/50 flex items-center justify-between">
+                            <div className="flex items-center space-x-2.5">
+                              <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-[#f05a28]">
+                                <User className="w-4 h-4" />
                               </div>
-                              <div className="text-[11px] text-[#f05a28] font-semibold">
-                                ₹{currentAdditionalPrice.toLocaleString()} / Person
+                              <div>
+                                <div className="text-xs font-bold text-neutral-900">
+                                  Additional Participant
+                                </div>
+                                <div className="text-[11px] text-[#f05a28] font-semibold">
+                                  ₹{currentAdditionalPrice.toLocaleString()} / Person
+                                </div>
                               </div>
                             </div>
-                          </div>
 
-                          <div className="flex items-center space-x-2.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (additionalCount > 0) {
-                                  setAdditionalCount(additionalCount - 1);
-                                  if (passengers.length > 0) {
-                                    setPassengers(passengers.slice(0, -1));
+                            <div className="flex items-center space-x-2.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (additionalCount > 0) {
+                                    setAdditionalCount(additionalCount - 1);
+                                    if (passengers.length > 0) {
+                                      setPassengers(passengers.slice(0, -1));
+                                    }
                                   }
-                                }
-                              }}
-                              className="w-7 h-7 rounded border border-neutral-300 bg-white text-neutral-700 font-bold hover:bg-neutral-100 flex items-center justify-center text-sm"
-                            >
-                              -
-                            </button>
-                            <span className="font-mono font-bold text-sm text-neutral-900 w-4 text-center">
-                              {additionalCount}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handleAddPassenger();
-                              }}
-                              className="w-7 h-7 rounded border border-neutral-300 bg-white text-neutral-700 font-bold hover:bg-neutral-100 flex items-center justify-center text-sm"
-                            >
-                              +
-                            </button>
+                                }}
+                                className="w-7 h-7 rounded border border-neutral-300 bg-white text-neutral-700 font-bold hover:bg-neutral-100 flex items-center justify-center text-sm"
+                              >
+                                -
+                              </button>
+                              <span className="font-mono font-bold text-sm text-neutral-900 w-4 text-center">
+                                {additionalCount}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleAddPassenger();
+                                }}
+                                className="w-7 h-7 rounded border border-neutral-300 bg-white text-neutral-700 font-bold hover:bg-neutral-100 flex items-center justify-center text-sm"
+                              >
+                                +
+                              </button>
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="p-3 rounded-xl border border-neutral-200 bg-neutral-50 flex items-center space-x-2.5 text-neutral-600 text-xs">
+                            <User className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                            <span>This ticket is strictly for <strong>1 individual participant</strong> (organiser vehicle experience).</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1265,7 +1272,7 @@ export function Registration() {
                                 {isExtreme
                                   ? "Guaranteed Co-Pilot seat in competition 4x4 rig"
                                   : isDay2
-                                    ? "Guaranteed passenger seat in Organiser 4x4 fleet"
+                                    ? "Guaranteed driver seat in Organiser 4x4 fleet"
                                     : "1 Driver + 2 Friends/Family included"}
                               </span>
                             </li>
@@ -1275,7 +1282,7 @@ export function Registration() {
                                 {isExtreme
                                   ? "Extreme obstacle runs, boulder crawls and steep drops"
                                   : isDay2
-                                    ? "Certified Event Marshals piloting the machine"
+                                    ? "Certified Event Marshals guiding your drive"
                                     : "15+ Natural & Technical Obstacles"}
                               </span>
                             </li>
@@ -1356,7 +1363,7 @@ export function Registration() {
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
                     {/* Left: Driver Details */}
-                    <div className="lg:col-span-6 space-y-3.5 p-4 sm:p-5 rounded-xl border border-neutral-200 bg-white shadow-sm">
+                    <div className={isDay2 ? "lg:col-span-12 max-w-2xl mx-auto w-full space-y-3.5 p-4 sm:p-5 rounded-xl border border-neutral-200 bg-white shadow-sm" : "lg:col-span-6 space-y-3.5 p-4 sm:p-5 rounded-xl border border-neutral-200 bg-white shadow-sm"}>
                       <div className="flex items-start space-x-3 pb-3 border-b border-neutral-200">
                         <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center flex-shrink-0">
                           <User className="w-4 h-4" />
@@ -1530,40 +1537,28 @@ export function Registration() {
                       </div>
                     </div>
 
-                    {/* Right: Passengers & Crew */}
-                    <div className="lg:col-span-6 space-y-3.5 p-4 sm:p-5 rounded-xl border border-neutral-200 bg-neutral-50/50">
-                      <div className="flex items-center justify-between pb-3 border-b border-neutral-200">
-                        <div className="flex items-start space-x-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-orange-100 text-[#f05a28] flex items-center justify-center flex-shrink-0">
-                            <Users className="w-4 h-4" />
+                    {/* Right: Passengers & Crew (Only for Day 1 Own 4x4) */}
+                    {!isDay2 && (
+                      <div className="lg:col-span-6 space-y-3.5 p-4 sm:p-5 rounded-xl border border-neutral-200 bg-neutral-50/50">
+                        <div className="flex items-center justify-between pb-3 border-b border-neutral-200">
+                          <div className="flex items-start space-x-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-orange-100 text-[#f05a28] flex items-center justify-center flex-shrink-0">
+                              <Users className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h3 className="font-outfit font-black text-base text-neutral-900">
+                                Crew / Co-Passengers
+                              </h3>
+                              <p className="text-[11px] text-neutral-500">
+                                2 friends/family included in standard slot
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <h3 className="font-outfit font-black text-base text-neutral-900">
-                              {isDay2 ? "Additional Co-Passengers" : "Crew / Co-Passengers"}
-                            </h3>
-                            <p className="text-[11px] text-neutral-500">
-                              {isDay2
-                                ? "Day 2 tickets are per-person; add extra seats if friends or family join"
-                                : "2 friends/family included in standard slot"}
-                            </p>
-                          </div>
+                          <span className="text-[10px] font-mono font-bold bg-white border border-neutral-200 px-2 py-0.5 rounded text-neutral-700">
+                            {`${passengers.length} Crew`}
+                          </span>
                         </div>
-                        <span className="text-[10px] font-mono font-bold bg-white border border-neutral-200 px-2 py-0.5 rounded text-neutral-700">
-                          {isDay2 ? `${1 + additionalCount} Seat(s)` : `${passengers.length} Crew`}
-                        </span>
-                      </div>
 
-                      {isDay2 && passengers.length === 0 ? (
-                        <div className="p-4 rounded-lg bg-white border border-neutral-200 text-center space-y-2">
-                          <User className="w-8 h-8 text-neutral-400 mx-auto" />
-                          <p className="text-xs text-neutral-800 font-bold">
-                            Single Participant Seat Reserved
-                          </p>
-                          <p className="text-[11px] text-neutral-500 leading-relaxed max-w-sm mx-auto">
-                            Attending alone? Click Save &amp; Continue below to proceed. If friends or family are joining you on Day 2, click Add Extra Participant below.
-                          </p>
-                        </div>
-                      ) : (
                         <div className="space-y-2.5 max-h-[290px] overflow-y-auto pr-1">
                           {passengers.map((passenger, idx) => (
                             <div key={idx} className="p-3 rounded-lg border border-neutral-200 bg-white space-y-2">
@@ -1573,14 +1568,10 @@ export function Registration() {
                                     {idx + 1}
                                   </span>
                                   <span className="text-xs font-bold text-neutral-800">
-                                    {isDay2
-                                      ? `Co-Passenger ${idx + 1}`
-                                      : idx === 0
-                                        ? "Co-Driver / Spotter"
-                                        : `Passenger ${idx + 1}`}
+                                    {idx === 0 ? "Co-Driver / Spotter" : `Passenger ${idx + 1}`}
                                   </span>
                                 </div>
-                                {(!isDay2 && idx >= 2) || (isDay2 && passengers.length > 0) ? (
+                                {idx >= 2 ? (
                                   <button
                                     type="button"
                                     onClick={() => handleRemovePassenger(idx)}
@@ -1632,9 +1623,8 @@ export function Registration() {
                                     <option value="">Relation</option>
                                     <option value="Family">Family</option>
                                     <option value="Friend">Friend</option>
-                                    {!isDay2 && <option value="Co-Driver">Co-Driver</option>}
-                                    {!isDay2 && <option value="Spotter">Spotter</option>}
-                                    {isDay2 && <option value="Co-Passenger">Co-Passenger</option>}
+                                    <option value="Co-Driver">Co-Driver</option>
+                                    <option value="Spotter">Spotter</option>
                                   </select>
                                 </div>
                                 <div>
@@ -1652,19 +1642,19 @@ export function Registration() {
                             </div>
                           ))}
                         </div>
-                      )}
 
-                      <button
-                        type="button"
-                        onClick={() => handleAddPassenger()}
-                        className="w-full py-2 border border-dashed border-emerald-400 hover:border-emerald-600 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-800 rounded-lg font-sans font-bold text-xs flex items-center justify-center space-x-2 transition-all"
-                      >
-                        <Plus className="w-3.5 h-3.5 text-emerald-700" />
-                        <span>
-                          Add Extra Participant (+₹{currentAdditionalPrice.toLocaleString()})
-                        </span>
-                      </button>
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => handleAddPassenger()}
+                          className="w-full py-2 border border-dashed border-emerald-400 hover:border-emerald-600 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-800 rounded-lg font-sans font-bold text-xs flex items-center justify-center space-x-2 transition-all"
+                        >
+                          <Plus className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>
+                            Add Extra Participant (+₹{currentAdditionalPrice.toLocaleString()})
+                          </span>
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Back and Save & Continue Buttons */}
@@ -2398,7 +2388,7 @@ export function Registration() {
                           </div>
                           <div className="text-[11px] text-neutral-500">
                             {isDay2
-                              ? `${1 + additionalCount} Seat(s) Booked (Primary + ${additionalCount} extra)`
+                              ? "1 Seat Booked (Single Participant)"
                               : `Driver: 1 | Passengers: ${passengers.filter((p) => p.name.trim()).length} | Additional: ${additionalCount}`}
                           </div>
                         </div>
